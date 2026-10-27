@@ -57,7 +57,7 @@ async function logIn(){const{data,error}=await sb.auth.signInWithPassword({email
 async function start(u){user=u;role=await ensure(u);
  if(!role||role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
  note('');tab=role=='driver'?'vehicle_cards':'driver_cards';listen();home()}
-async function out(){if(chan)sb.removeChannel(chan);unread=0;await sb.auth.signOut();user=null;note('');authView(false)}
+async function out(){if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
 
 let unread=0,chan=null,cchan=null;
 const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My offer']]:[['driver_cards','Drivers'],['vehicles','My vehicles']]),['requests','Requests'],['matches','Matches'],['documents','Docs'],['insurance','Insurance'],['notifications','Alerts']];
@@ -155,33 +155,4 @@ const bub=m=>`<div style="text-align:${m.sender_id==user.id?'right':'left'};marg
 let chatReq=null,offers=[];
 Object.assign(V,{
  async requests(){const{data,error}=await sb.from('requests').select('*').in('status',['pending','declined']).order('created_at',{ascending:false});if(error)return error;
-  $('body').innerHTML=data.length?data.map(r=>`<div class="card"><b>Request ${esc(r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}','accepted')">Accept</button> <button onclick="respond('${r.id}','declined')">Decline</button>`:''}</div>`).join(''):empty('No open requests. Accepted ones move to Matches.')},
- async matches(){const[a,rt]=await Promise.all([sb.from('requests').select('*').in('status',['accepted','cancelled']).order('created_at',{ascending:false}),sb.from('ratings').select('request_id').eq('rater_id',user.id)]);if(a.error)return a.error;
-  const done=new Set((rt.data||[]).map(x=>x.request_id)),act=a.data.filter(r=>r.status=='accepted');
-  $('body').innerHTML=(act.length?act.map(r=>`<div class="card"><span class="tag">Active match</span><div><b>${esc(r.id.slice(0,8))}</b></div><div class="mut">Agree your terms in chat. Phone numbers stay hidden.</div><button class="pri" onclick="openChat('${r.id}')">💬 Chat</button> ${done.has(r.id)?'':`<button onclick="rate('${r.id}')">⭐ Rate</button> `}<button onclick="cancelMatch('${r.id}')">Cancel match</button></div>`).join(''):empty('No active matches yet. Accepted requests appear here.'))
-  +a.data.filter(r=>r.status=='cancelled').map(r=>`<div class="card"><b>Cancelled · ${esc(r.id.slice(0,8))}</b><div class="mut">This match was cancelled.</div>${done.has(r.id)?'':`<button onclick="rate('${r.id}')">⭐ Rate</button>`}</div>`).join('')},
- async notifications(){const{data,error}=await sb.from('notifications').select('*').eq('user_id',user.id).order('created_at',{ascending:false}).limit(50);if(error)return error;
-  $('body').innerHTML=(unread?'<button onclick="readAll()">Mark all as read</button>':'')+(data.length?data.map(n=>`<div class="card" style="${n.is_read?'':'border-color:var(--ac)'}"><b>${esc(n.title)}</b><div class="mut">${esc(n.body)}</div><div class="mut">${new Date(n.created_at).toLocaleString()}</div></div>`).join(''):empty('No alerts yet.'))},
- async insurance(){const{data,error}=await sb.from('insurance_offers').select('*').eq('active',true).order('monthly_from');if(error)return error;offers=data;
-  $('body').innerHTML='<div class="hint">Compare cover from partner insurers. These are adverts, so check the terms before you buy.</div>'+(data.length?data.map(o=>`<div class="card"><span class="tag">${esc(o.cover_type)}</span><div><b>${esc(o.company)}</b> · ${esc(o.title)}</div><div class="mut">${esc(o.details)}</div><div>From <b>${rand(o.monthly_from)}</b>/month</div><button class="pri" onclick="quote('${o.id}')">Get a quote</button></div>`).join(''):empty('No insurance offers yet.'))}
-});
-async function readAll(){await sb.from('notifications').update({is_read:true}).eq('user_id',user.id).eq('is_read',false);unread=0;home()}
-async function quote(id){const{error}=await sb.from('insurance_leads').insert({offer_id:id,user_id:user.id});if(error)return note(error.message,1);
- note('Quote request sent to the insurer.');const l=(offers.find(o=>o.id==id)||{}).link;if(l&&/^(https?:|mailto:|tel:)/i.test(l))window.open(l,'_blank')}
-async function cancelMatch(id){if(!confirm('Cancel this match? The other person will be told.'))return;
- const{error}=await sb.from('requests').update({status:'cancelled',responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
-async function rate(id){const s=Math.round(+prompt('Rate 1 to 5 stars'));if(!(s>=1&&s<=5))return;
- const{error}=await sb.rpc('submit_rating',{rid:id,n_stars:s,cmt:prompt('Comment (optional)')||''});error?note(error.message,1):(note('Thanks for rating.'),home())}
-async function refreshChat(){const{data}=await sb.from('chat_messages').select('*').eq('request_id',chatReq).order('created_at');
- if($('chat')){$('chat').innerHTML=(data||[]).map(bub).join('')||'<p class="mut">No messages yet. Say hi 👋</p>';$('chat').scrollTop=1e9}}
-async function openChat(id){chatReq=id;
- $('body').innerHTML='<button onclick="tab=\'matches\';home()">← Back</button><div id="chat" class="card" style="max-height:55vh;overflow:auto;margin-top:10px"></div><input id="cm" placeholder="Type a message"><button class="pri" onclick="sendChat()">Send</button>';
- await refreshChat();
- cchan=sb.channel('c'+id).on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages',filter:'request_id=eq.'+id},refreshChat).subscribe()}
-async function sendChat(){const t=$('cm').value.trim();if(!t)return;
- if(/\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d/.test(t))return note('Phone numbers can’t be shared in chat.',1);
- const{error}=await sb.from('chat_messages').insert({request_id:chatReq,sender_id:user.id,body:t});if(error)return note(error.message,1);$('cm').value='';note('');refreshChat()}
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
-(async()=>{const{data:{session}}=await sb.auth.getSession();
- if(session){const r=await ensure(session.user);if(r){mode=r;return start(session.user)}}authView(false)})();
-</script></body></html>
+  $('body').innerHTML=data.length?data.map(r=>`<div class="card"><b>Request ${esc(r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}',
