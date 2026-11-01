@@ -49,8 +49,23 @@ button.on,button.pri{box-shadow:0 3px 10px #0b8f9a40}
 .hint{border-radius:18px;border-color:var(--ac);background:var(--card)}
 .logo{width:92px;height:92px;margin:18px auto 6px;border-radius:50%;border:5px solid var(--ac);background:var(--dk);display:flex;align-items:center;justify-content:center;font-size:42px;box-shadow:0 6px 18px #2c4a5733}
 #toast{border-radius:99px}
+/* ---- Bottom navigation + More ---- */
+#tabs{display:none}
+main{padding-bottom:100px}
+#nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;justify-content:space-around;background:var(--dk);padding:8px 6px calc(8px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 0 0;box-shadow:0 -4px 16px #0004}
+#nav:empty{display:none}
+#nav button{background:transparent;border:0;box-shadow:none;color:#cfe6e8;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;padding:5px 10px;border-radius:16px;position:relative;min-width:58px}
+#nav button .i{font-size:20px;line-height:1.1}
+#nav button.on{background:var(--ac);color:#fff}
+#nav .bd{position:absolute;top:0;right:6px;background:var(--er);color:#fff;border-radius:99px;font-size:10px;font-style:normal;padding:1px 6px}
+.top span{color:#4fe3ec;font-weight:600}
+.morep{background:var(--dk);border-radius:24px;padding:14px;box-shadow:0 8px 22px #2c4a5740}
+.morep-h{text-align:center;color:#4fe3ec;font-weight:700;letter-spacing:3px;margin:4px 0 14px}
+.mbtn{display:block;width:100%;margin:0 0 10px;padding:14px;background:#fff;color:#16323b;border:0;font-weight:600;text-align:center;box-shadow:none}
+.mbtn.cy{background:#19bfc9;color:#fff}.mbtn.out{background:transparent;border:1px solid #fff7;color:#fff}
+.wa{height:calc(100dvh - 270px)}
 </style></head><body><main>
-<div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main>
+<div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const sb=supabase.createClient('https://wpqmqduwbqlrmhhtqsnw.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndwcW1xZHV3YnFscm1oaHRxc253Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0MTMxMzksImV4cCI6MjEwNzk4OTEzOX0.eTHiQJyEJzE_gC4ZRTFnF3sV1Sknm1CqWy7_SfI8pFc');
@@ -60,7 +75,7 @@ let user=null,role=null,mode='driver',tab='';
 let tT;const note=(t,bad)=>{const el=$('toast');clearTimeout(tT);if(!t){el.className='';return}
  el.textContent=(/^🔔/.test(t)?'':bad?'⚠️ ':'✅ ')+t;el.className='show'+(bad?' bad':'');tT=setTimeout(()=>el.className='',bad?6000:3200)};
 
-function authView(signup){
+function authView(signup){const nv=$('nav');if(nv)nv.innerHTML='';
  app.innerHTML=`<div class="logo">🚗</div><h1 style="text-align:center">DriverMatch</h1>
  <div class="row"><button class="${mode=='driver'?'on':''}" onclick="mode='driver';authView(${signup})">I’m a driver</button><button class="${mode=='owner'?'on':''}" onclick="mode='owner';authView(${signup})">I’m an owner</button></div>
  <div class="card"><h2>${signup?'Create '+mode+' account':'Log in as '+mode}</h2>
@@ -92,11 +107,15 @@ async function out(){if(chan)sb.removeChannel(chan);unread=0;try{const reg=await
 
 let unread=0,chan=null,cchan=null;
 const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My offer']]:[['driver_cards','Drivers'],['vehicles','My vehicles']]),['requests','Requests'],['matches','Matches'],['documents','Docs'],['insurance','Insurance'],['notifications','Alerts'],['help','Help']];
-const drawTabs=()=>{$('tabs').innerHTML=TABS().map(([k,l])=>`<button class="${k==tab?'on':''}" onclick="tab='${k}';home()">${l}${k=='notifications'&&unread?` (${unread})`:''}</button>`).join('')};
+const MORE=['profile','vehicles','documents','insurance','help','more'];
+const NAV=()=>[[role=='driver'?'vehicle_cards':'driver_cards','🏠','Home'],['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','☰','More']];
+const drawTabs=()=>{const nv=$('nav');if(!nv)return;if(!user){nv.innerHTML='';return}
+ nv.innerHTML=NAV().map(([k,ic,l])=>{const on=k=='more'?MORE.includes(tab):k==tab;return `<button class="${on?'on':''}" onclick="tab='${k}';home()"><span class="i">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`}).join('')};
+const TITLES={vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More'};
 async function unreadCount(){const{count}=await sb.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('is_read',false);unread=count||0;drawTabs()}
 function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();note('🔔 '+p.new.title)}).subscribe()}
 async function home(){if(cchan){sb.removeChannel(cchan);cchan=null}
- app.innerHTML=`<div class="top"><b>DriverMatch · ${role}</b><button onclick="out()">Log out</button></div><div class="tabs" id="tabs"></div><div id="body">Loading…</div><p class="mut" style="text-align:center;margin-top:18px"><a href="#" onclick="legal('terms');return false">Terms</a> · <a href="#" onclick="legal('privacy');return false">Privacy</a></p>`;
+ app.innerHTML=`<div class="top"><b>DriverMatch</b><span>${TITLES[tab]||''}</span></div><div class="tabs" id="tabs"></div><div id="body">Loading…</div><p class="mut" style="text-align:center;margin-top:18px"><a href="#" onclick="legal('terms');return false">Terms</a> · <a href="#" onclick="legal('privacy');return false">Privacy</a></p>`;
  drawTabs();unreadCount();const e=await V[tab]();if(e)note(e.message,1)}
 const empty=t=>`<p class="mut">${t}</p>`;
 const V={
@@ -120,6 +139,10 @@ async function sendReport(){
  const{error}=await sb.from('support_tickets').insert({user_id:user.id,user_role:role,subject:$('rs').value,message:m});
  error?note(error.message,1):(note('Report sent. We will look into it.'),home());
 }
+V.more=async function(){
+ const it=[...(role=='driver'?[['profile','💰','My offer']]:[['vehicles','🚙','My vehicles']]),['documents','📄','Documents'],['insurance','🛡️','Insurance'],['help','💬','Help & reports']];
+ $('body').innerHTML=`<div class="morep"><div class="morep-h">MORE</div>${it.map(([k,ic,l],n)=>`<button class="mbtn ${n%2?'cy':''}" onclick="tab='${k}';home()">${ic} ${l}</button>`).join('')}<button class="mbtn" onclick="legal('terms')">Terms</button><button class="mbtn" onclick="legal('privacy')">Privacy</button><button class="mbtn out" onclick="out()">Log out</button></div>`;
+};
 async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
 async function upload(){const f=$('fl').files[0];if(!f)return note('Choose a file first.',1);
  const path=`${user.id}/${Date.now()}_${f.name.replace(/[^\w.-]/g,'_')}`;
