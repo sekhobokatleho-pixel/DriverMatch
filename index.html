@@ -64,6 +64,14 @@ main{padding-bottom:100px}
 .mbtn{display:block;width:100%;margin:0 0 10px;padding:14px;background:#fff;color:#16323b;border:0;font-weight:600;text-align:center;box-shadow:none}
 .mbtn.cy{background:#19bfc9;color:#fff}.mbtn.out{background:transparent;border:1px solid #fff7;color:#fff}
 .wa{height:calc(100dvh - 270px)}
+/* ---- Home overview tiles ---- */
+.ov{background:var(--dk);border-radius:24px;padding:14px;box-shadow:0 8px 22px #2c4a5740}
+.ov-h{text-align:center;color:#4fe3ec;font-weight:700;letter-spacing:3px;margin:4px 0 12px}
+.ov-w{background:#19bfc9;color:#fff;text-align:center;padding:10px;border-radius:99px;font-weight:600;margin:0 0 14px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{position:relative;background:#fff;color:#16323b;border:0;border-radius:20px;padding:22px 8px;font-weight:700;font-size:14px;display:flex;flex-direction:column;align-items:center;gap:8px;box-shadow:0 4px 10px #0003}
+.tile .ic{font-size:32px;line-height:1}
+.tile .bd{position:absolute;top:8px;right:12px;background:var(--er);color:#fff;border-radius:99px;font-size:11px;font-style:normal;padding:1px 7px}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -102,16 +110,16 @@ async function start(u){user=u;
  if(us&&us.status!=='active'){await sb.auth.signOut();user=null;return note('Your account has been '+us.status+' by the admin. Please contact support.',1)}
  role=await ensure(u);
  if(!role||role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
- note('');tab=role=='driver'?'vehicle_cards':'driver_cards';listen();home()}
+ note('');tab='dash';listen();home()}
 async function out(){if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
 
 let unread=0,chan=null,cchan=null;
 const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My offer']]:[['driver_cards','Drivers'],['vehicles','My vehicles']]),['requests','Requests'],['matches','Matches'],['documents','Docs'],['insurance','Insurance'],['notifications','Alerts'],['help','Help']];
 const MORE=['profile','vehicles','documents','insurance','help','more'];
-const NAV=()=>[[role=='driver'?'vehicle_cards':'driver_cards','🏠','Home'],['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','☰','More']];
+const NAV=()=>[['dash','🏠','Home'],['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','☰','More']];
 const drawTabs=()=>{const nv=$('nav');if(!nv)return;if(!user){nv.innerHTML='';return}
- nv.innerHTML=NAV().map(([k,ic,l])=>{const on=k=='more'?MORE.includes(tab):k==tab;return `<button class="${on?'on':''}" onclick="tab='${k}';home()"><span class="i">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`}).join('')};
-const TITLES={vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More'};
+ nv.innerHTML=NAV().map(([k,ic,l])=>{const on=k=='more'?MORE.includes(tab):k=='dash'?['dash','vehicle_cards','driver_cards'].includes(tab):k==tab;return `<button class="${on?'on':''}" onclick="tab='${k}';home()"><span class="i">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`}).join('')};
+const TITLES={dash:'Home',vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More'};
 async function unreadCount(){const{count}=await sb.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('is_read',false);unread=count||0;drawTabs()}
 function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();note('🔔 '+p.new.title)}).subscribe()}
 async function home(){if(cchan){sb.removeChannel(cchan);cchan=null}
@@ -142,6 +150,12 @@ async function sendReport(){
 V.more=async function(){
  const it=[...(role=='driver'?[['profile','💰','My offer']]:[['vehicles','🚙','My vehicles']]),['documents','📄','Documents'],['insurance','🛡️','Insurance'],['help','💬','Help & reports']];
  $('body').innerHTML=`<div class="morep"><div class="morep-h">MORE</div>${it.map(([k,ic,l],n)=>`<button class="mbtn ${n%2?'cy':''}" onclick="tab='${k}';home()">${ic} ${l}</button>`).join('')}<button class="mbtn" onclick="legal('terms')">Terms</button><button class="mbtn" onclick="legal('privacy')">Privacy</button><button class="mbtn out" onclick="out()">Log out</button></div>`;
+};
+V.dash=async function(){
+ await unreadCount();
+ const nm=((user.user_metadata||{}).full_name||'').trim().split(' ')[0];
+ const t=[...(role=='driver'?[['vehicle_cards','🚗','Find vehicles'],['profile','💰','My offer']]:[['driver_cards','🧑','Find drivers'],['vehicles','🚙','My vehicles']]),['requests','📨','Requests'],['matches','🤝','Matches'],['documents','📄','Documents'],['insurance','🛡️','Insurance'],['notifications','🔔','Alerts'],['more','⋯','More']];
+ $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w">Welcome back${nm?', '+esc(nm):''}</div><div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
 };
 async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
 async function upload(){const f=$('fl').files[0];if(!f)return note('Choose a file first.',1);
