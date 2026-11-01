@@ -22,15 +22,30 @@ a{color:var(--ac)}#msg{min-height:20px;margin:0 0 6px;font-weight:600}
 .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--ac);color:#fff;margin:0 6px 6px 0}
 .hint{background:var(--card);border:1px solid var(--ac);border-radius:12px;padding:10px;margin:0 0 10px}
 .card button{margin:0 0 8px}
+#msg{display:none}
+#toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translate(-50%,-200%);max-width:92%;background:var(--ac);color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 6px 20px #0005;z-index:9999;font-weight:600;transition:transform .25s;pointer-events:none}
+#toast.show{transform:translate(-50%,0);pointer-events:auto}#toast.bad{background:var(--er)}
+.wa{display:flex;flex-direction:column;height:calc(100dvh - 190px);min-height:360px;border:1px solid var(--bd);border-radius:12px;overflow:hidden;margin-top:10px}
+.wah{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--ac);color:#fff}
+.wah button{background:transparent;border-color:#fff7;color:#fff}
+.wam{flex:1;overflow-y:auto;padding:10px;background:#efeae2}
+.b{max-width:80%;width:fit-content;padding:6px 9px 4px;border-radius:10px;margin:0 0 5px;font-size:15px;box-shadow:0 1px 1px #0002;white-space:pre-wrap;overflow-wrap:anywhere;color:#111}
+.b.me{margin-left:auto;background:#d9fdd3;border-top-right-radius:2px}.b.th{background:#fff;border-top-left-radius:2px}
+.b small{display:block;text-align:right;font-size:11px;opacity:.6;margin-top:2px}
+.wab{display:flex;gap:6px;padding:8px;background:var(--card);border-top:1px solid var(--bd)}
+.wab input{margin:0;border-radius:99px;flex:1}.wab button{border-radius:50%;width:44px;height:44px;padding:0;flex:none}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .wam{background:#0b141a}:root:not([data-theme="light"]) .b.me{background:#005c4b;color:#eef1f5}:root:not([data-theme="light"]) .b.th{background:#202c33;color:#eef1f5}}
+:root[data-theme="dark"] .wam{background:#0b141a}:root[data-theme="dark"] .b.me{background:#005c4b;color:#eef1f5}:root[data-theme="dark"] .b.th{background:#202c33;color:#eef1f5}
 </style></head><body><main>
-<div id="msg"></div><div id="app"></div></main>
+<div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const sb=supabase.createClient('https://wpqmqduwbqlrmhhtqsnw.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndwcW1xZHV3YnFscm1oaHRxc253Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI0MTMxMzksImV4cCI6MjEwNzk4OTEzOX0.eTHiQJyEJzE_gC4ZRTFnF3sV1Sknm1CqWy7_SfI8pFc');
 const $=id=>document.getElementById(id),app=$('app');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let user=null,role=null,mode='driver',tab='';
-const note=(t,bad)=>{$('msg').textContent=t;$('msg').style.color=bad?'var(--er)':'var(--ac)'};
+let tT;const note=(t,bad)=>{const el=$('toast');clearTimeout(tT);if(!t){el.className='';return}
+ el.textContent=(/^🔔/.test(t)?'':bad?'⚠️ ':'✅ ')+t;el.className='show'+(bad?' bad':'');tT=setTimeout(()=>el.className='',bad?6000:3200)};
 
 function authView(signup){
  app.innerHTML=`<h1>DriverMatch</h1>
@@ -165,7 +180,8 @@ async function ask(id){const r=role=='driver'?{driver_id:user.id,vehicle_id:id}:
  if(!r.vehicle_id)return note('Add a vehicle first.',1);
  const{error}=await sb.from('requests').insert({...r,initiated_by:role});note(error?error.message:'Request sent.',!!error)}
 /* ---- Alerts, matches, chat, ratings, insurance ---- */
-const bub=m=>`<div style="text-align:${m.sender_id==user.id?'right':'left'};margin:0 0 6px"><span class="tag" style="background:${m.sender_id==user.id?'var(--ac)':'var(--mut)'};white-space:pre-wrap;font-size:14px">${esc(m.body)}</span></div>`;
+const tm=d=>new Date(d).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
+const bub=m=>`<div class="b ${m.sender_id==user.id?'me':'th'}">${esc(m.body)}<small>${tm(m.created_at)}</small></div>`;
 let chatReq=null,offers=[],alerts=[],showPast=false,showPastReq=false,showOld=false;
 async function loadNames(){if(role!='owner')return{};try{const{data}=await sb.rpc('driver_first_names');const m={};(data||[]).forEach(x=>m[x.id]=x.first_name);return m}catch(e){return{}}}
 Object.assign(V,{
@@ -203,12 +219,13 @@ async function rate(id){const s=Math.round(+prompt('Rate 1 to 5 stars'));if(!(s>
 async function refreshChat(){const{data}=await sb.from('chat_messages').select('*').eq('request_id',chatReq).order('created_at');
  if($('chat')){$('chat').innerHTML=(data||[]).map(bub).join('')||'<p class="mut">No messages yet. Say hi 👋</p>';$('chat').scrollTop=1e9}}
 async function openChat(id){chatReq=id;
- $('body').innerHTML='<button onclick="tab=\'matches\';home()">← Back</button> <button onclick="cancelMatch(chatReq)">Cancel match</button><div id="chat" class="card" style="max-height:55vh;overflow:auto;margin-top:10px"></div><input id="cm" placeholder="Type a message"><button class="pri" onclick="sendChat()">Send</button>';
+ $('body').innerHTML=`<div class="wa"><div class="wah"><button onclick="tab='matches';home()">←</button><b>Match chat</b><button onclick="cancelMatch(chatReq)">Cancel match</button></div><div id="chat" class="wam"></div><div class="wab"><input id="cm" placeholder="Type a message" autocomplete="off"><button class="pri" onclick="sendChat()">➤</button></div></div>`;
+ $('cm').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat()});
  await refreshChat();
  cchan=sb.channel('c'+id).on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages',filter:'request_id=eq.'+id},refreshChat).subscribe()}
 async function sendChat(){const t=$('cm').value.trim();if(!t)return;
  if(/\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d[\s\-().]*\d/.test(t))return note('Phone numbers can’t be shared in chat.',1);
- const{error}=await sb.from('chat_messages').insert({request_id:chatReq,sender_id:user.id,body:t});if(error)return note(error.message,1);$('cm').value='';note('');refreshChat()}
+ const{error}=await sb.from('chat_messages').insert({request_id:chatReq,sender_id:user.id,body:t});if(error)return note(error.message,1);$('cm').value='';note('');refreshChat();$('cm').focus()}
 /* ---- Terms and Privacy ---- */
 const CONTACT="[add your support email here]";
 const LEGAL={
