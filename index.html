@@ -54,13 +54,16 @@ async function signUp(){if(!$('ag').checked)return note('Please accept the Terms
  if(data.session)return start(data.user);note('Check your email to confirm, then log in.')}
 async function logIn(){const{data,error}=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value});
  if(error)return note(error.message,1);start(data.user)}
-async function start(u){user=u;role=await ensure(u);
+async function start(u){user=u;
+ const{data:us}=await sb.from('user_status').select('status').eq('user_id',u.id).maybeSingle();
+ if(us&&us.status!=='active'){await sb.auth.signOut();user=null;return note('Your account has been '+us.status+' by the admin. Please contact support.',1)}
+ role=await ensure(u);
  if(!role||role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
  note('');tab=role=='driver'?'vehicle_cards':'driver_cards';listen();home()}
 async function out(){if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
 
 let unread=0,chan=null,cchan=null;
-const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My offer']]:[['driver_cards','Drivers'],['vehicles','My vehicles']]),['requests','Requests'],['matches','Matches'],['documents','Docs'],['insurance','Insurance'],['notifications','Alerts']];
+const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My offer']]:[['driver_cards','Drivers'],['vehicles','My vehicles']]),['requests','Requests'],['matches','Matches'],['documents','Docs'],['insurance','Insurance'],['notifications','Alerts'],['help','Help']];
 const drawTabs=()=>{$('tabs').innerHTML=TABS().map(([k,l])=>`<button class="${k==tab?'on':''}" onclick="tab='${k}';home()">${l}${k=='notifications'&&unread?` (${unread})`:''}</button>`).join('')};
 async function unreadCount(){const{count}=await sb.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('is_read',false);unread=count||0;drawTabs()}
 function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();note('🔔 '+p.new.title)}).subscribe()}
@@ -78,6 +81,17 @@ const V={
  async notifications(){const{data,error}=await sb.from('notifications').select('*').eq('user_id',user.id).order('created_at',{ascending:false});if(error)return error;
   $('body').innerHTML=data.length?data.map(n=>`<div class="card"><b>${esc(n.title)}</b><div class="mut">${esc(n.body)}</div></div>`).join(''):empty('No alerts yet.')}
 };
+V.help=async function(){
+ const{data,error}=await sb.from('support_tickets').select('*').eq('user_id',user.id).order('created_at',{ascending:false});
+ if(error)return error;
+ $('body').innerHTML=`<div class="card"><h2>Report an issue</h2><div class="mut">Tell us what went wrong. Replies show up here.</div><select id="rs"><option>Problem with a match</option><option>Payment issue</option><option>Documents / verification</option><option>Problem with another user</option><option>App problem</option><option>Other</option></select><textarea id="rm" rows="4" placeholder="Describe the problem" style="width:100%;box-sizing:border-box;padding:10px;margin:0 0 8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit"></textarea><button class="pri" onclick="sendReport()">Send report</button></div>`
+ +(data.length?'<h2>My reports</h2>'+data.map(t=>`<div class="card"><b>${esc(t.subject)}</b> <span class="tag">${esc(t.status||'open')}</span><div class="mut">${esc(t.message)}</div>${t.admin_reply?`<div><b>Reply:</b> ${esc(t.admin_reply)}</div>`:''}</div>`).join(''):'');
+};
+async function sendReport(){
+ const m=$('rm').value.trim();if(m.length<5)return note('Please describe the problem.',1);
+ const{error}=await sb.from('support_tickets').insert({user_id:user.id,user_role:role,subject:$('rs').value,message:m});
+ error?note(error.message,1):(note('Report sent. We will look into it.'),home());
+}
 async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
 async function upload(){const f=$('fl').files[0];if(!f)return note('Choose a file first.',1);
  const path=`${user.id}/${Date.now()}_${f.name.replace(/[^\w.-]/g,'_')}`;
