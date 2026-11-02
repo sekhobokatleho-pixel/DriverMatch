@@ -206,7 +206,7 @@ const BACK={help:'more',insurance:'more',payments:'more'};
 async function unreadCount(){const{count}=await sb.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('is_read',false);unread=count||0;drawTabs()}
 function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();note('🔔 '+p.new.title)}).subscribe()}
 async function home(){if(cchan){sb.removeChannel(cchan);cchan=null}
- app.innerHTML=`<div class="top"><b>DriverMatch</b><span>${TITLES[tab]||''}</span></div>${tab&&tab!='dash'?`<button style="margin:0 0 10px" onclick="tab='${BACK[tab]||'dash'}';home()">← Back</button>`:''}<div class="tabs" id="tabs"></div><div id="body">Loading…</div>`;
+ app.innerHTML=`<div class="top"><b>DriverMatch</b><span>${TITLES[tab]||''}</span></div>${tab&&tab!='dash'?`<button id="gback" style="margin:0 0 10px" onclick="tab='${BACK[tab]||'dash'}';home()">← Back</button>`:''}<div class="tabs" id="tabs"></div><div id="body">Loading…</div>`;
  drawTabs();unreadCount();const e=await V[tab]();if(e)note(e.message,1)}
 const empty=t=>`<p class="mut">${t}</p>`;
 const V={
@@ -319,7 +319,7 @@ async function editArea(id){note('Getting your location…');let u;
 async function ask(id){const r=role=='driver'?{driver_id:user.id,vehicle_id:id}:{driver_id:id,vehicle_id:selVeh};
  if(!r.vehicle_id)return note('Add a vehicle first.',1);
  const{error}=await sb.from('requests').insert({...r,initiated_by:role});note(error?error.message:'Request sent.',!!error)}
-/* ---- Alerts, matches, chat, ratings, insurance ---- */
+/* ---- Alerts, matches, chat, insurance ---- */
 const tm=d=>new Date(d).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
 const bub=m=>`<div class="b ${m.sender_id==user.id?'me':'th'}">${esc(m.body)}<small>${tm(m.created_at)}</small></div>`;
 let chatReq=null,offers=[],alerts=[],showPast=false,showPastReq=false,showOld=false;
@@ -329,9 +329,9 @@ Object.assign(V,{
   const card=r=>`<div class="card"><b>Request · ${esc(fn[r.driver_id]||r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}','accepted')">Accept</button> <button onclick="respond('${r.id}','declined')">Decline</button>`:''}</div>`,
    open=data.filter(r=>r.status=='pending'),past=data.filter(r=>r.status!='pending');
   $('body').innerHTML=(open.length?open.map(card).join(''):empty('No open requests. Accepted ones move to Matches.'))+(past.length?`<button onclick="showPastReq=!showPastReq;home()">${showPastReq?'Hide':'Show'} past requests (${past.length})</button>`:'')+(showPastReq?past.map(card).join(''):'')},
- async matches(){const[a,rt]=await Promise.all([sb.from('requests').select('*').eq('status','accepted').order('created_at',{ascending:false}),sb.from('ratings').select('request_id').eq('rater_id',user.id)]);if(a.error)return a.error;
-  const done=new Set((rt.data||[]).map(x=>x.request_id)),act=a.data,fn=await loadNames(),nm=r=>esc(fn[r.driver_id]||r.id.slice(0,8));
-  $('body').innerHTML=(act.length?act.map(r=>`<div class="card"><span class="tag">Active match</span><div><b>${nm(r)}</b></div><div class="mut">Agree your terms in chat. Phone numbers stay hidden.</div><button class="pri" onclick="openChat('${r.id}')">💬 Chat</button> ${done.has(r.id)?'':`<button onclick="rate('${r.id}')">⭐ Rate</button> `}<button onclick="cancelMatch('${r.id}')">Cancel match</button></div>`).join(''):empty('No active matches yet. Accepted requests appear here.'))
+ async matches(){const a=await sb.from('requests').select('*').eq('status','accepted').order('created_at',{ascending:false});if(a.error)return a.error;
+  const act=a.data,fn=await loadNames(),nm=r=>esc(fn[r.driver_id]||r.id.slice(0,8));
+  $('body').innerHTML=(act.length?act.map(r=>`<div class="card"><span class="tag">Active match</span><div><b>${nm(r)}</b></div><div class="mut">Agree your terms in chat. Phone numbers stay hidden.</div><button class="pri" onclick="openChat('${r.id}')">💬 Chat</button><button onclick="cancelMatch('${r.id}')">Cancel match</button></div>`).join(''):empty('No active matches yet. Accepted requests appear here.'))
 },
  async notifications(){const{data,error}=await sb.from('notifications').select('*').eq('user_id',user.id).order('created_at',{ascending:false}).limit(50);if(error)return error;
   alerts=data;const ps=await pushState();$('body').innerHTML=pushBanner(ps)+(unread?'<button onclick="readAll()">Mark all as read</button>':'')+(()=>{const week=Date.now()-7*864e5,card=n=>`<div class="card" style="cursor:pointer;${n.is_read?'':'border-color:var(--ac)'}" onclick="openAlert('${n.id}')"><b>${esc(n.title)}</b>${n.link_type?' <span class="mut">›</span>':''}<div class="mut">${esc(n.body)}</div><div class="mut">${new Date(n.created_at).toLocaleString()}</div></div>`,
@@ -357,8 +357,6 @@ async function confirmCancel(id){const r=$('cr').value;if(!r)return note('Choose
   await sb.from('match_cancellations').insert({request_id:id,cancelled_by:user.id,cancelled_by_role:role,driver_id:q&&q.driver_id,owner_id:ow,vehicle_label:vl,reason:r})}catch(e){}
  const{error}=await sb.rpc('cancel_match',{p_request_id:id,p_reason:r});if(error)return note(error.message,1);
  chatReq=null;tab='matches';note('Match cancelled and removed.');home()}
-async function rate(id){const s=Math.round(+prompt('Rate 1 to 5 stars'));if(!(s>=1&&s<=5))return;
- const{error}=await sb.rpc('submit_rating',{rid:id,n_stars:s,cmt:prompt('Comment (optional)')||''});error?note(error.message,1):(note('Thanks for rating.'),home())}
 async function refreshChat(){const{data}=await sb.from('chat_messages').select('*').eq('request_id',chatReq).order('created_at');
  if($('chat')){$('chat').innerHTML=(data||[]).map(bub).join('')||'<p class="mut">No messages yet. Say hi 👋</p>';$('chat').scrollTop=1e9}}
 async function openChat(id){chatReq=id;
@@ -389,7 +387,7 @@ terms:{t:"Terms of Use",s:[
 ["11. Contact","Questions: "+CONTACT]]},
 privacy:{t:"Privacy Policy",s:[
 ["Who we are","DriverMatch is the responsible party for your personal information under POPIA (the Protection of Personal Information Act). Contact: "+CONTACT],
-["What we collect","Your name, phone number, email and account type. For drivers: licence type, weekly offer and verification documents (ID, licence, PDP, police clearance, selfie). For owners: vehicle details, photos and proof of ownership. Also your approximate area, chat messages, ratings and alerts, and, if you switch on phone alerts, your device’s notification address."],
+["What we collect","Your name, phone number, email and account type. For drivers: licence type, weekly offer and verification documents (ID, licence, PDP, police clearance, selfie). For owners: vehicle details, photos and proof of ownership. Also your approximate area, chat messages and alerts, and, if you switch on phone alerts, your device’s notification address."],
 ["Why we use it","To verify users, match owners and drivers, send alerts, keep the platform safe, prevent fraud and meet legal duties."],
 ["Your location","Location is optional and only taken when you tap “Use my location”. It is saved rounded to about 1 km. Other users see only your area and a rough distance, never exact coordinates."],
 ["Who sees what","Owners see a driver’s first name, licence type, offer and rough distance. Drivers see vehicle details and an area. Phone numbers are never shown in matches or chat. Our admin team can see your documents to verify them."],
@@ -414,4 +412,6 @@ async function enablePush(){try{if(await Notification.requestPermission()!='gran
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 (async()=>{const{data:{session}}=await sb.auth.getSession();
  if(session){const r=await ensure(session.user);if(r){mode=r;return start(session.user)}}authView(false)})();
+
+new MutationObserver(()=>{const g=document.getElementById('gback'),b=document.getElementById('body');if(g&&b){const f=b.querySelector('button');g.style.display=(f&&/^[\u2190\u2039\u00ab<]/.test(f.textContent.trim()))?'none':''}}).observe(document.body,{childList:true,subtree:true});
 </script></body></html>
