@@ -49,7 +49,7 @@ button.on,button.pri{box-shadow:0 3px 10px #0b8f9a40}
 #toast{border-radius:99px}
 /* ---- Bottom navigation + More ---- */
 #tabs{display:none}
-main{padding-bottom:100px}
+main{padding-bottom:24px}
 #nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;justify-content:space-around;background:var(--dk);padding:8px 6px calc(8px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 0 0;box-shadow:0 -4px 16px #0004}
 #nav:empty{display:none}
 #nav button{background:transparent;border:0;box-shadow:none;color:#cfe6e8;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;padding:5px 10px;border-radius:16px;position:relative;min-width:58px}
@@ -161,13 +161,13 @@ let unread=0,chan=null,cchan=null;
 const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My offer']]:[['driver_cards','Drivers'],['vehicles','My vehicles']]),['requests','Requests'],['matches','Matches'],['documents','Docs'],['insurance','Insurance'],['notifications','Alerts'],['help','Help']];
 const MORE=['help','more'];
 const NAV=()=>[['dash','🏠','Home'],['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','☰','More']];
-const drawTabs=()=>{const nv=$('nav');if(!nv)return;if(!user){nv.innerHTML='';return}
- nv.innerHTML=NAV().map(([k,ic,l])=>{const on=k=='more'?MORE.includes(tab):k=='dash'?['dash','vehicle_cards','driver_cards','profile','vehicles','documents','insurance'].includes(tab):k==tab;return `<button class="${on?'on':''}" onclick="tab='${k}';home()"><span class="i">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`}).join('')};
-const TITLES={dash:'Home',vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More'};
+const drawTabs=()=>{const nv=$('nav');if(nv)nv.innerHTML=''};
+const TITLES={dash:'Home',vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More',payments:'Payments'};
+const BACK={help:'more',insurance:'more',payments:'more'};
 async function unreadCount(){const{count}=await sb.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('is_read',false);unread=count||0;drawTabs()}
 function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();note('🔔 '+p.new.title)}).subscribe()}
 async function home(){if(cchan){sb.removeChannel(cchan);cchan=null}
- app.innerHTML=`<div class="top"><b>DriverMatch</b><span>${TITLES[tab]||''}</span></div><div class="tabs" id="tabs"></div><div id="body">Loading…</div>`;
+ app.innerHTML=`<div class="top"><b>DriverMatch</b><span>${TITLES[tab]||''}</span></div>${tab&&tab!='dash'?`<button style="margin:0 0 10px" onclick="tab='${BACK[tab]||'dash'}';home()">← Back</button>`:''}<div class="tabs" id="tabs"></div><div id="body">Loading…</div>`;
  drawTabs();unreadCount();const e=await V[tab]();if(e)note(e.message,1)}
 const empty=t=>`<p class="mut">${t}</p>`;
 const V={
@@ -192,12 +192,15 @@ async function sendReport(){
  error?note(error.message,1):(note('Report sent. We will look into it.'),home());
 }
 V.more=async function(){
- $('body').innerHTML=`<div class="morep"><div class="morep-h">MORE</div><button class="mbtn cy" onclick="tab='help';home()">💬 Help & reports</button><button class="mbtn" onclick="legal('terms')">📜 Terms</button><button class="mbtn" onclick="legal('privacy')">🔒 Privacy</button><button class="mbtn out" onclick="out()">Log out</button></div>`;
+ $('body').innerHTML=`<div class="morep"><div class="morep-h">MORE</div><button class="mbtn cy" onclick="tab='insurance';home()">🛡️ Insurance</button><button class="mbtn cy" onclick="tab='payments';home()">💳 Payments</button><button class="mbtn cy" onclick="tab='help';home()">💬 Help & reports</button><button class="mbtn" onclick="legal('terms')">📜 Terms</button><button class="mbtn" onclick="legal('privacy')">🔒 Privacy</button><button class="mbtn out" onclick="out()">Log out</button></div>`;
+};
+V.payments=async function(){
+ $('body').innerHTML=`<div class="card"><h2>Payments</h2><div class="mut">Drivers pay for access, then can send requests to as many owners as they like. Owners pay per vehicle. Fees are shown in the app before you pay.</div></div><div class="card"><b>After a match</b><div class="mut">Once a match is made or cancelled, that access is used up and you pay again to send new requests. Fees are not refundable once access has been used.</div></div><div class="card"><b>Payment problem?</b><div class="mut">Report it and we will look into it.</div><button class="pri" onclick="tab='help';home()">Report a payment issue</button></div>`;
 };
 V.dash=async function(){
  await unreadCount();
  const nm=((user.user_metadata||{}).full_name||'').trim().split(' ')[0];
-  const t=[...(role=='driver'?[['vehicle_cards','🚗','Find vehicles'],['profile','💰','My offer']]:[['driver_cards','🧑','Find drivers'],['vehicles','🚙','My vehicles']]),['documents','📄','Documents'],['insurance','🛡️','Insurance']];
+  const t=[...(role=='driver'?[['vehicle_cards','🚗','Find vehicles'],['profile','💰','My offer']]:[['driver_cards','🧑','Find drivers'],['vehicles','🚙','My vehicles']]),['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['documents','📄','Documents'],['more','⚙️','More']];
  $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w"><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b></div><div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
 };
 async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
