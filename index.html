@@ -116,6 +116,45 @@ a{color:var(--ac)}
 .tiles{grid-template-columns:1fr;gap:12px}
 .tile{flex-direction:row;justify-content:center;gap:14px;padding:16px;font-size:17px}
 .tile .ic{width:52px;height:52px;font-size:26px}
+
+/* ---- Misty glass skin ---- */
+:root:root:root:root{--bg:#4d6b68;--card:rgba(255,255,255,.16);--tx:#fff;--mut:rgba(255,255,255,.74);--ac:#eef6f2;--dk:rgba(255,255,255,.14);--bd:rgba(255,255,255,.34);--er:#ff9a9a;color-scheme:dark}
+body{background:#4d6b68;min-height:100vh;font-weight:400;letter-spacing:.1px}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:
+ radial-gradient(70% 40% at 15% 8%,rgba(214,226,235,.55),transparent 70%),
+ radial-gradient(60% 45% at 95% 30%,rgba(168,150,214,.55),transparent 70%),
+ radial-gradient(90% 40% at 20% 75%,rgba(120,170,160,.6),transparent 70%),
+ linear-gradient(180deg,#6d8794 0%,#5a7a78 45%,#3f5f5d 100%)}
+h1,h2{font-weight:500;letter-spacing:.2px}
+.card,.hint,.top,.tile,.mbtn,.wa,.ov-w{-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+.card,#body .card{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.34);border-top:1px solid rgba(255,255,255,.34);border-radius:26px;box-shadow:0 10px 30px rgba(20,40,40,.18);padding:16px}
+.hint{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.34);border-radius:22px}
+.top{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.34);box-shadow:0 8px 22px rgba(20,40,40,.15)}
+.top span,.ov-h,.morep-h{color:#fff;font-weight:500}
+input,select,textarea{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.34);color:#fff}
+input::placeholder,textarea::placeholder{color:rgba(255,255,255,.65)}
+select option{color:#1d2f2c;background:#fff}
+button{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.38);color:#fff;box-shadow:none}
+button.on,button.pri{background:rgba(255,255,255,.88);border-color:rgba(255,255,255,.88);color:#2a4743;font-weight:600;box-shadow:0 6px 18px rgba(20,40,40,.2)}
+.tag{background:rgba(255,255,255,.25);color:#fff;border:1px solid rgba(255,255,255,.4);font-weight:500}
+a{color:#fff;text-decoration:underline}
+.ov-w{background:linear-gradient(135deg,rgba(255,255,255,.3),rgba(190,170,235,.35));color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:30px;padding:28px 18px;box-shadow:0 12px 30px rgba(20,40,40,.2)}
+.ov-w small{font-weight:400;opacity:.85}
+.ov-w b{font-size:34px;font-weight:300;letter-spacing:.3px}
+.tile{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.34);border-radius:26px;box-shadow:0 8px 24px rgba(20,40,40,.16);font-weight:500}
+.tile .ic{background:rgba(255,255,255,.22);box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+.tile .bd{background:#ff8f8f;color:#3a1010}
+.mbtn,.mbtn.cy{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.34);border-radius:99px;font-weight:500}
+.mbtn.out{background:transparent;color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.34)}
+.wa{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.34);border-radius:26px}
+.wah{background:rgba(255,255,255,.16);color:#fff;border-bottom:1px solid rgba(255,255,255,.3)}
+.wam{background:transparent}
+.b.th{background:rgba(255,255,255,.88);color:#25403c}
+.b.me{background:rgba(205,190,245,.92);color:#2a2346}
+.wab{background:rgba(255,255,255,.14);border-top:1px solid rgba(255,255,255,.3)}
+#toast{background:rgba(255,255,255,.95);color:#2a4743;box-shadow:0 10px 30px rgba(20,40,40,.3)}#toast.bad{background:#ffdede;color:#6b1c1c}
+.logo{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.6);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.mut{color:rgba(255,255,255,.74)}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
