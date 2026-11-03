@@ -155,6 +155,10 @@ a{color:#fff;text-decoration:underline}
 #toast{background:rgba(255,255,255,.95);color:#2a4743;box-shadow:0 10px 30px rgba(20,40,40,.3)}#toast.bad{background:#ffdede;color:#6b1c1c}
 .logo{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.6);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 .mut{color:rgba(255,255,255,.74)}
+/* ---- Error popup: centered, misty glass ---- */
+#toast.bad{top:50%;left:50%;width:max-content;max-width:84%;text-align:center;transform:translate(-50%,-50%);opacity:0;transition:none;pointer-events:none;color:#fff;font-weight:500;line-height:1.45;padding:20px 24px;border-radius:26px;background:linear-gradient(160deg,rgba(255,255,255,.26),rgba(255,138,138,.22));border:1px solid rgba(255,255,255,.45);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:0 14px 40px rgba(20,40,40,.35),inset 0 1px 0 rgba(255,255,255,.35);text-shadow:0 1px 2px rgba(20,40,40,.35)}
+#toast.bad.show{opacity:1;pointer-events:auto;animation:errpop .22s ease-out}
+@keyframes errpop{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -164,7 +168,11 @@ const $=id=>document.getElementById(id),app=$('app');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let user=null,role=null,mode='driver',tab='';
 let tT;const note=(t,bad)=>{const el=$('toast');clearTimeout(tT);if(!t){el.className='';return}
- el.textContent=(/^🔔/.test(t)?'':bad?'⚠️ ':'✅ ')+t;el.className='show'+(bad?' bad':'');tT=setTimeout(()=>el.className='',bad?6000:3200)};
+ el.textContent=(/^🔔/.test(t)?'':bad?'⚠️ ':'✅ ')+t;el.className='show'+(bad?' bad':'');tT=setTimeout(()=>el.className='',bad?4000:3200)};
+/* every exception -> centered popup, 4s */
+const errMsg=e=>(e&&e.message)||String(e||'Something went wrong');
+addEventListener('error',e=>{if(/ResizeObserver/.test(e.message||''))return;note(errMsg(e.error||e.message),1)});
+addEventListener('unhandledrejection',e=>note(errMsg(e.reason),1));
 
 function authView(signup){const nv=$('nav');if(nv)nv.innerHTML='';
  app.innerHTML=`<div class="logo">🚗</div><h1 style="text-align:center">DriverMatch</h1>
@@ -264,7 +272,7 @@ const getLoc=()=>new Promise((ok,no)=>{
   e=>no(new Error(e.code==1?'Location permission was denied. Allow it in your browser settings, or type your area instead.':'Could not get your location. Try again, or type your area.')),
   {timeout:15000,maximumAge:300000})});
 async function areaOf(l){try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&lat=${l.lat}&lon=${l.lng}`);const a=(await r.json()).address||{};
- return{city:a.city||a.town||a.village||a.municipality||a.county||'',suburb:a.suburb||a.neighbourhood||a.city_district||a.quarter||''}}catch(e){return{city:'',suburb:''}}}
+ return{city:a.city||a.town||a.village||a.municipality||a.county||'',suburb:a.suburb||a.neighbourhood||a.city_district||a.quarter||''}}catch(e){note(errMsg(e),1);return{city:'',suburb:''}}}
 async function useLoc(){note('Getting your location…');
  try{const l=await getLoc(),a=await areaOf(l);loc={...l,...a};
   if($('ci'))$('ci').value=a.city;if($('su'))$('su').value=a.suburb;
@@ -323,7 +331,7 @@ async function ask(id){const r=role=='driver'?{driver_id:user.id,vehicle_id:id}:
 const tm=d=>new Date(d).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
 const bub=m=>`<div class="b ${m.sender_id==user.id?'me':'th'}">${esc(m.body)}<small>${tm(m.created_at)}</small></div>`;
 let chatReq=null,offers=[],alerts=[],showPast=false,showPastReq=false,showOld=false;
-async function loadNames(){if(role!='owner')return{};try{const{data}=await sb.rpc('driver_first_names');const m={};(data||[]).forEach(x=>m[x.id]=x.first_name);return m}catch(e){return{}}}
+async function loadNames(){if(role!='owner')return{};try{const{data}=await sb.rpc('driver_first_names');const m={};(data||[]).forEach(x=>m[x.id]=x.first_name);return m}catch(e){note(errMsg(e),1);return{}}}
 Object.assign(V,{
  async requests(){const{data,error}=await sb.from('requests').select('*').in('status',['pending','declined']).order('created_at',{ascending:false});if(error)return error;const fn=await loadNames();
   const card=r=>`<div class="card"><b>Request · ${esc(fn[r.driver_id]||r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}','accepted')">Accept</button> <button onclick="respond('${r.id}','declined')">Decline</button>`:''}</div>`,
@@ -409,7 +417,7 @@ async function enablePush(){try{if(await Notification.requestPermission()!='gran
  const j=(await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(VAPID)})).toJSON();
  const{error}=await sb.from('push_subscriptions').upsert({user_id:user.id,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth},{onConflict:'endpoint'});
  error?note(error.message,1):(note('Phone notifications are on.'),home())}catch(e){note(e.message,1)}}
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>note(errMsg(e),1)));
 (async()=>{const{data:{session}}=await sb.auth.getSession();
  if(session){const r=await ensure(session.user);if(r){mode=r;return start(session.user)}}authView(false)})();
 
