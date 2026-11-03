@@ -167,6 +167,13 @@ a{color:#fff;text-decoration:underline}
 .annc p{margin:0 0 16px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .annc button{min-width:140px}
 @keyframes annfade{from{opacity:0}to{opacity:1}}
+
+.pfb{display:flex;align-items:center;justify-content:center;gap:16px;cursor:pointer;text-align:left}
+.pfb b{font-size:28px}
+.pfb em{display:block;font-style:normal;font-size:13px;opacity:.85;margin-top:2px}
+.av{width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.5);color:#fff;font-size:26px;font-weight:500}
+.av.big{width:112px;height:112px;font-size:44px;margin:4px auto 0;display:flex}
+.pfc{text-align:center}.pfc .row{margin-top:8px}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -229,7 +236,7 @@ const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My 
 const MORE=['help','more'];
 const NAV=()=>[['dash','🏠','Home'],['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','☰','More']];
 const drawTabs=()=>{const nv=$('nav');if(nv)nv.innerHTML=''};
-const TITLES={dash:'Home',vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More',payments:'Payments'};
+const TITLES={dash:'Home',vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More',payments:'Payments',myprofile:'My profile'};
 const BACK={help:'more',insurance:'more',payments:'more'};
 async function unreadCount(){const{count}=await sb.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('is_read',false);unread=count||0;drawTabs()}
 function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();if(p.new.link_type=='announcement')annShow(p.new);else note('🔔 '+p.new.title)}).subscribe()}
@@ -240,18 +247,7 @@ const empty=t=>`<p class="mut">${t}</p>`;
 const V={
  async requests(){const{data,error}=await sb.from('requests').select('*').order('created_at',{ascending:false});if(error)return error;
   $('body').innerHTML=data.length?data.map(r=>`<div class="card"><b>Request ${esc(r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}','accepted')">Accept</button> <button onclick="respond('${r.id}','declined')">Decline</button>`:''}</div>`).join(''):empty('No requests yet.')},
- async documents(){const[a,b]=await Promise.all([sb.from('documents').select('*').eq('user_id',user.id).order('created_at',{ascending:false}),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);if(a.error)return a.error;
-  const vs=b.data||[];
-  const T=role=='owner'?['id','selfie_id','proof_of_ownership'].filter(t=>!a.data.some(d=>d.doc_type==t&&d.status!='rejected')):['id','licence','pdp','police_clearance','selfie_id'];
-  if(role=='owner'&&vs.length)T.push('vehicle_photo');
-  const LB=['odometer','front','back','left','right','interior'];
-  const done={};if(role=='owner')a.data.forEach(d=>{if(d.doc_type=='vehicle_photo'&&d.label&&d.vehicle_id&&d.status!='rejected'){(done[d.vehicle_id]=done[d.vehicle_id]||new Set()).add(d.label)}});
-  const prog=role=='owner'?(b.data||[]).map(v=>{const g=done[v.id]||new Set();const miss=LB.filter(x=>!g.has(x));return `<div class="card"><b>${esc(v.make)} ${esc(v.model)}</b><div class="mut">${g.size} of 6 photos${miss.length?' · missing: '+miss.join(', '):' · complete'}</div></div>`}).join(''):'';
-  const first=T[0];
-  const msg=role=='owner'&&!vs.length?'<div class="mut">Add a vehicle under My vehicles to unlock vehicle photos.</div>':'';
-  const form=T.length?`<div class="card"><h2>Upload a document</h2><select id="dt" onchange="togglePL()">${T.map(t=>`<option>${t}</option>`).join('')}</select><div id="cn" class="mut" style="display:${first=='id'?'':'none'}">Must be a certified copy of your ID (stamped and signed by a police station or commissioner of oaths).</div><select id="pl" style="display:${first=='vehicle_photo'?'':'none'}">${LB.map(t=>`<option value="${t}">${t=='odometer'?'odometer (kilometres)':t}</option>`).join('')}</select>${role=='owner'&&vs.length?`<select id="dv" style="display:${first=='vehicle_photo'?'':'none'}"><option value="">Choose vehicle</option>${vs.map(v=>`<option value="${v.id}">${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>`:''}<input id="fl" type="file" accept="image/*,application/pdf"><button class="pri" onclick="upload()">Upload</button>${msg}</div>`:`<div class="card"><h2>Upload a document</h2><div class="mut">Your basic documents are uploaded.</div>${msg}</div>`;
-  $('body').innerHTML=form+prog
-  +a.data.map(d=>`<div class="card"><b>${esc(d.doc_type)}${d.label?' · '+esc(d.label):''}</b><div class="mut">${esc(d.status)}${d.admin_note?' · '+esc(d.admin_note):''}</div></div>`).join('')},
+ async documents(){const r=await docsHtml();if(r.error)return r.error;$('body').innerHTML=r.html},
  async notifications(){const{data,error}=await sb.from('notifications').select('*').eq('user_id',user.id).order('created_at',{ascending:false});if(error)return error;
   $('body').innerHTML=data.length?data.map(n=>`<div class="card"><b>${esc(n.title)}</b><div class="mut">${esc(n.body)}</div></div>`).join(''):empty('No alerts yet.')}
 };
@@ -274,10 +270,61 @@ V.payments=async function(){
 };
 V.dash=async function(){
  await unreadCount();
- const nm=((user.user_metadata||{}).full_name||'').trim().split(' ')[0];
-  const t=[...(role=='driver'?[['vehicle_cards','🚗','Find vehicles'],['profile','💰','My offer']]:[['driver_cards','🧑','Find drivers'],['vehicles','🚙','My vehicles']]),['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['documents','📄','Documents'],['more','⚙️','More']];
- $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w"><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b></div><div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
+ const[me,need]=await Promise.all([loadMe(),docsNeed()]);
+ const full=((me.full_name||(user.user_metadata||{}).full_name)||'').trim(),nm=full.split(' ')[0];
+ const url=await avSigned(me.avatar_path);
+  const t=[...(role=='driver'?[['vehicle_cards','🚗','Find vehicles'],['profile','💰','My offer']]:[['driver_cards','🧑','Find drivers'],['vehicles','🚙','My vehicles']]),['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','⚙️','More']];
+ const bn=need&&need.miss?`<div class="hint" style="cursor:pointer" onclick="tab='myprofile';home()">📄 ${need.miss} document${need.miss>1?'s':''} still needed${need.rej?' · some were rejected':''}. Tap to upload in your profile.</div>`:'';
+ $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w pfb" onclick="tab='myprofile';home()">${avHtml(url,full||role)}<span><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b><em>My profile and documents ›</em></span></div>${bn}<div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
 };
+
+/* ---- Profile: picture (optional, private), personal details, documents ---- */
+async function loadMe(){try{const{data}=await sb.from('profiles').select('full_name,phone,email,avatar_path').eq('id',user.id).maybeSingle();return data||{}}catch(e){return{}}}
+async function avSigned(p){if(!p)return null;try{const{data}=await sb.storage.from('avatars').createSignedUrl(p,3600);return data?data.signedUrl:null}catch(e){return null}}
+const avHtml=(url,nm,cls)=>url?`<img class="av ${cls||''}" src="${esc(url)}" alt="">`:`<span class="av ${cls||''}">${esc((nm||'?').trim().charAt(0).toUpperCase()||'?')}</span>`;
+async function docsNeed(){try{
+ const[a,b]=await Promise.all([sb.from('documents').select('doc_type,status,vehicle_id,label').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id').eq('owner_id',user.id):{data:[]}]);
+ if(a.error)return null;
+ const ds=a.data||[],ok=ds.filter(d=>d.status!='rejected'),rej=ds.filter(d=>d.status=='rejected').length;
+ const B=role=='owner'?['id','selfie_id','proof_of_ownership']:['id','licence','pdp','police_clearance','selfie_id'];
+ let miss=B.filter(t=>!ok.some(d=>d.doc_type==t)).length;
+ if(role=='owner')(b.data||[]).forEach(v=>{['odometer','front','back','left','right','interior'].forEach(l=>{if(!ok.some(d=>d.doc_type=='vehicle_photo'&&d.vehicle_id==v.id&&d.label==l))miss++})});
+ return{miss,rej}}catch(e){return null}}
+V.myprofile=async function(){
+ const[me,dp,d]=await Promise.all([loadMe(),role=='driver'?sb.from('driver_profiles').select('licence_type,city,suburb').eq('user_id',user.id).maybeSingle():{data:null},docsHtml()]);
+ if(d.error)return d.error;
+ const url=await avSigned(me.avatar_path),nm=me.full_name||(user.user_metadata||{}).full_name||'',p=dp&&dp.data;
+ $('body').innerHTML=`<div class="card pfc">${avHtml(url,nm,'big')}<div class="mut">Optional. Only you can see this picture.</div><div class="row"><button onclick="$('avf').click()">${url?'Change picture':'Add picture'}</button>${url?'<button onclick="rmAvatar()">Remove</button>':''}</div><input id="avf" type="file" accept="image/*" style="display:none" onchange="setAvatar(this)"></div>
+ <div class="card"><h2>Personal details</h2><div class="mut">Full name</div><input id="pfn" value="${esc(nm)}" autocomplete="name"><div class="mut">Phone</div><input id="pph" value="${esc(me.phone||(user.user_metadata||{}).phone||'')}" inputmode="tel" autocomplete="tel"><div class="mut">Email</div><div style="margin:0 0 10px">${esc(me.email||user.email||'')}</div>${p?`<div class="mut">Licence</div><div style="margin:0 0 10px">${esc(p.licence_type||'Not set')}</div><div class="mut">Area</div><div style="margin:0 0 4px">${where(p)}</div><div class="mut">Change your area under My offer.</div>`:''}<button class="pri" onclick="saveMe()">Save details</button></div>
+ <h2 style="margin:16px 0 8px">My documents</h2>`+d.html;
+};
+async function saveMe(){const n=$('pfn').value.trim(),p=$('pph').value.trim();if(n.length<2)return note('Enter your name.',1);
+ const{error}=await sb.rpc('save_my_profile',{p_full_name:n,p_phone:p});if(error)return note(error.message,1);
+ try{const r=await sb.auth.updateUser({data:{full_name:n,phone:p}});if(r.data&&r.data.user)user=r.data.user}catch(e){}
+ note('Details saved.');home()}
+function shrink(f){return new Promise((ok,no)=>{const i=new Image(),u=URL.createObjectURL(f);
+ i.onload=()=>{const s=Math.min(i.width,i.height),c=document.createElement('canvas');c.width=c.height=400;c.getContext('2d').drawImage(i,(i.width-s)/2,(i.height-s)/2,s,s,0,0,400,400);URL.revokeObjectURL(u);c.toBlob(b=>b?ok(b):no(new Error('Could not read that picture.')),'image/jpeg',.85)};
+ i.onerror=()=>no(new Error('Could not read that picture. Try a JPG or PNG.'));i.src=u})}
+async function setAvatar(inp){const f=inp.files[0];if(!f)return;note('Saving picture…');
+ const b=await shrink(f),old=(await loadMe()).avatar_path,path=`${user.id}/avatar_${Date.now()}.jpg`;
+ const u=await sb.storage.from('avatars').upload(path,b,{contentType:'image/jpeg'});if(u.error)return note(u.error.message,1);
+ const{error}=await sb.rpc('save_my_profile',{p_full_name:'',p_phone:'',p_avatar_path:path});if(error)return note(error.message,1);
+ if(old)await sb.storage.from('avatars').remove([old]);note('Picture saved.');home()}
+async function rmAvatar(){const old=(await loadMe()).avatar_path;
+ const{error}=await sb.rpc('save_my_profile',{p_full_name:'',p_phone:'',p_clear_avatar:true});if(error)return note(error.message,1);
+ if(old)await sb.storage.from('avatars').remove([old]);note('Picture removed.');home()}
+async function docsHtml(){const[a,b]=await Promise.all([sb.from('documents').select('*').eq('user_id',user.id).order('created_at',{ascending:false}),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);if(a.error)return{error:a.error};
+  const vs=b.data||[];
+  const T=role=='owner'?['id','selfie_id','proof_of_ownership'].filter(t=>!a.data.some(d=>d.doc_type==t&&d.status!='rejected')):['id','licence','pdp','police_clearance','selfie_id'];
+  if(role=='owner'&&vs.length)T.push('vehicle_photo');
+  const LB=['odometer','front','back','left','right','interior'];
+  const done={};if(role=='owner')a.data.forEach(d=>{if(d.doc_type=='vehicle_photo'&&d.label&&d.vehicle_id&&d.status!='rejected'){(done[d.vehicle_id]=done[d.vehicle_id]||new Set()).add(d.label)}});
+  const prog=role=='owner'?(b.data||[]).map(v=>{const g=done[v.id]||new Set();const miss=LB.filter(x=>!g.has(x));return `<div class="card"><b>${esc(v.make)} ${esc(v.model)}</b><div class="mut">${g.size} of 6 photos${miss.length?' · missing: '+miss.join(', '):' · complete'}</div></div>`}).join(''):'';
+  const first=T[0];
+  const msg=role=='owner'&&!vs.length?'<div class="mut">Add a vehicle under My vehicles to unlock vehicle photos.</div>':'';
+  const form=T.length?`<div class="card"><h2>Upload a document</h2><select id="dt" onchange="togglePL()">${T.map(t=>`<option>${t}</option>`).join('')}</select><div id="cn" class="mut" style="display:${first=='id'?'':'none'}">Must be a certified copy of your ID (stamped and signed by a police station or commissioner of oaths).</div><select id="pl" style="display:${first=='vehicle_photo'?'':'none'}">${LB.map(t=>`<option value="${t}">${t=='odometer'?'odometer (kilometres)':t}</option>`).join('')}</select>${role=='owner'&&vs.length?`<select id="dv" style="display:${first=='vehicle_photo'?'':'none'}"><option value="">Choose vehicle</option>${vs.map(v=>`<option value="${v.id}">${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>`:''}<input id="fl" type="file" accept="image/*,application/pdf"><button class="pri" onclick="upload()">Upload</button>${msg}</div>`:`<div class="card"><h2>Upload a document</h2><div class="mut">Your basic documents are uploaded.</div>${msg}</div>`;
+  return{html:form+prog
+  +a.data.map(d=>`<div class="card"><b>${esc(d.doc_type)}${d.label?' · '+esc(d.label):''}</b><div class="mut">${esc(d.status)}${d.admin_note?' · '+esc(d.admin_note):''}</div></div>`).join('')}}
 async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
 function togglePL(){const v=$('dt').value;[['pl','vehicle_photo'],['dv','vehicle_photo'],['cn','id']].forEach(([id,t])=>{const e=$(id);if(e)e.style.display=v==t?'':'none'})}
 async function upload(){const f=$('fl').files[0];if(!f)return note('Choose a file first.',1);
