@@ -241,9 +241,12 @@ const V={
  async requests(){const{data,error}=await sb.from('requests').select('*').order('created_at',{ascending:false});if(error)return error;
   $('body').innerHTML=data.length?data.map(r=>`<div class="card"><b>Request ${esc(r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}','accepted')">Accept</button> <button onclick="respond('${r.id}','declined')">Decline</button>`:''}</div>`).join(''):empty('No requests yet.')},
  async documents(){const[a,b]=await Promise.all([sb.from('documents').select('*').eq('user_id',user.id).order('created_at',{ascending:false}),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);if(a.error)return a.error;
-  const T={driver:['id','licence','pdp','police_clearance','selfie_id'],owner:['id','proof_of_ownership','vehicle_photo']}[role];
-  $('body').innerHTML=`<div class="card"><h2>Upload a document</h2><select id="dt">${T.map(t=>`<option>${t}</option>`).join('')}</select>${role=='owner'?`<select id="dv"><option value="">No vehicle</option>${(b.data||[]).map(v=>`<option value="${v.id}">${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>`:''}<input id="fl" type="file" accept="image/*,application/pdf"><button class="pri" onclick="upload()">Upload</button></div>`
-  +a.data.map(d=>`<div class="card"><b>${esc(d.doc_type)}</b><div class="mut">${esc(d.status)}${d.admin_note?' · '+esc(d.admin_note):''}</div></div>`).join('')},
+  const T={driver:['id','licence','pdp','police_clearance','selfie_id'],owner:['id','licence','pdp','police_clearance','selfie_id','proof_of_ownership','vehicle_photo']}[role];
+  const LB=['odometer','front','back','left','right','interior'];
+  const done={};if(role=='owner')a.data.forEach(d=>{if(d.doc_type=='vehicle_photo'&&d.label&&d.vehicle_id&&d.status!='rejected'){(done[d.vehicle_id]=done[d.vehicle_id]||new Set()).add(d.label)}});
+  const prog=role=='owner'?(b.data||[]).map(v=>{const g=done[v.id]||new Set();const miss=LB.filter(x=>!g.has(x));return `<div class="card"><b>${esc(v.make)} ${esc(v.model)}</b><div class="mut">${g.size} of 6 photos${miss.length?' · missing: '+miss.join(', '):' · complete'}</div></div>`}).join(''):'';
+  $('body').innerHTML=`<div class="card"><h2>Upload a document</h2><select id="dt" onchange="togglePL()">${T.map(t=>`<option>${t}</option>`).join('')}</select><select id="pl" style="display:none">${LB.map(t=>`<option value="${t}">${t=='odometer'?'odometer (kilometres)':t}</option>`).join('')}</select>${role=='owner'?`<select id="dv"><option value="">No vehicle</option>${(b.data||[]).map(v=>`<option value="${v.id}">${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>`:''}<input id="fl" type="file" accept="image/*,application/pdf"><button class="pri" onclick="upload()">Upload</button></div>`+prog
+  +a.data.map(d=>`<div class="card"><b>${esc(d.doc_type)}${d.label?' · '+esc(d.label):''}</b><div class="mut">${esc(d.status)}${d.admin_note?' · '+esc(d.admin_note):''}</div></div>`).join('')},
  async notifications(){const{data,error}=await sb.from('notifications').select('*').eq('user_id',user.id).order('created_at',{ascending:false});if(error)return error;
   $('body').innerHTML=data.length?data.map(n=>`<div class="card"><b>${esc(n.title)}</b><div class="mut">${esc(n.body)}</div></div>`).join(''):empty('No alerts yet.')}
 };
@@ -271,10 +274,12 @@ V.dash=async function(){
  $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w"><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b></div><div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
 };
 async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
+function togglePL(){const pl=$('pl');if(pl)pl.style.display=$('dt').value=='vehicle_photo'?'':'none'}
 async function upload(){const f=$('fl').files[0];if(!f)return note('Choose a file first.',1);
+ const isVP=$('dt').value=='vehicle_photo';if(isVP&&!($('dv')||{}).value)return note('Choose which vehicle this photo is for.',1);
  const path=`${user.id}/${Date.now()}_${f.name.replace(/[^\w.-]/g,'_')}`;
  const u=await sb.storage.from('documents').upload(path,f);if(u.error)return note(u.error.message,1);
- const{error}=await sb.from('documents').insert({user_id:user.id,vehicle_id:($('dv')||{}).value||null,doc_type:$('dt').value,file_path:path});
+ const{error}=await sb.from('documents').insert({user_id:user.id,vehicle_id:($('dv')||{}).value||null,doc_type:$('dt').value,label:isVP?$('pl').value:null,file_path:path});
  error?note(error.message,1):(note('Uploaded. Waiting for admin approval.'),home())}
 
 const CITIES=['Bloemfontein','Johannesburg','Pretoria','Cape Town','Durban','Gqeberha','East London','Polokwane','Mbombela','Kimberley','Welkom','Harrismith','Soweto','Pietermaritzburg','Rustenburg'];
