@@ -159,6 +159,14 @@ a{color:#fff;text-decoration:underline}
 #toast.bad{top:50%;left:50%;width:max-content;max-width:84%;text-align:center;transform:translate(-50%,-50%);opacity:0;transition:none;pointer-events:none;color:#fff;font-weight:500;line-height:1.45;padding:20px 24px;border-radius:26px;background:linear-gradient(160deg,rgba(255,255,255,.26),rgba(255,138,138,.22));border:1px solid rgba(255,255,255,.45);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:0 14px 40px rgba(20,40,40,.35),inset 0 1px 0 rgba(255,255,255,.35);text-shadow:0 1px 2px rgba(20,40,40,.35)}
 #toast.bad.show{opacity:1;pointer-events:auto;animation:errpop .22s ease-out}
 @keyframes errpop{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+/* ---- Admin announcement popup ---- */
+#ann{position:fixed;inset:0;z-index:9990;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,40,40,.5);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);animation:annfade .2s ease-out}
+.annc{width:100%;max-width:380px;max-height:80dvh;overflow-y:auto;text-align:center;color:#fff;padding:22px 20px;border-radius:28px;background:linear-gradient(160deg,rgba(255,255,255,.28),rgba(190,170,235,.26));border:1px solid rgba(255,255,255,.45);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:0 16px 44px rgba(20,40,40,.4),inset 0 1px 0 rgba(255,255,255,.35)}
+.annh{font-size:13px;letter-spacing:1.5px;text-transform:uppercase;opacity:.85;margin:0 0 8px}
+.annc h2{font-size:20px;margin:0 0 10px}
+.annc p{margin:0 0 16px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.annc button{min-width:140px}
+@keyframes annfade{from{opacity:0}to{opacity:1}}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -201,10 +209,22 @@ async function start(u){user=u;
  if(us&&us.status!=='active'){await sb.auth.signOut();user=null;return note('Your account has been '+us.status+' by the admin. Please contact support.',1)}
  role=await ensure(u);
  if(!role||role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
- note('');tab='dash';listen();home()}
-async function out(){if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
+ note('');tab='dash';listen();home();annLoad()}
+async function out(){annQ.length=0;const ao=$('ann');if(ao)ao.remove();if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
 
 let unread=0,chan=null,cchan=null;
+/* ---- Admin announcements: popup + stays in Alerts ---- */
+const annQ=[];
+function annShow(n){if(annQ.some(x=>x.id==n.id))return;annQ.push(n);if(annQ.length==1)annNext()}
+function annNext(){let o=$('ann');const n=annQ[0];if(!n){if(o)o.remove();return}
+ if(!o){o=document.createElement('div');o.id='ann';document.body.appendChild(o)}
+ o.innerHTML=`<div class="annc"><div class="annh">📢 Message from DriverMatch</div><h2>${esc(n.title)}</h2><p>${esc(n.body)}</p><button class="pri" onclick="annOk()">Okay</button></div>`}
+async function annOk(){const n=annQ.shift();
+ if(n&&!n.is_read){n.is_read=true;const{error}=await sb.from('notifications').update({is_read:true}).eq('id',n.id);if(error)note(error.message,1);else{await unreadCount();if(tab=='notifications')V.notifications()}}
+ annNext()}
+async function annLoad(){try{const{data,error}=await sb.from('notifications').select('*').eq('user_id',user.id).eq('link_type','announcement').eq('is_read',false).order('created_at');
+ if(error)return note(error.message,1);(data||[]).forEach(annShow)}catch(e){note(errMsg(e),1)}}
+
 const TABS=()=>[...(role=='driver'?[['vehicle_cards','Vehicles'],['profile','My offer']]:[['driver_cards','Drivers'],['vehicles','My vehicles']]),['requests','Requests'],['matches','Matches'],['documents','Docs'],['insurance','Insurance'],['notifications','Alerts'],['help','Help']];
 const MORE=['help','more'];
 const NAV=()=>[['dash','🏠','Home'],['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','☰','More']];
@@ -212,7 +232,7 @@ const drawTabs=()=>{const nv=$('nav');if(nv)nv.innerHTML=''};
 const TITLES={dash:'Home',vehicle_cards:'Vehicles',driver_cards:'Drivers',profile:'My offer',vehicles:'My vehicles',requests:'Requests',matches:'Matches',documents:'Documents',insurance:'Insurance',notifications:'Alerts',help:'Help',more:'More',payments:'Payments'};
 const BACK={help:'more',insurance:'more',payments:'more'};
 async function unreadCount(){const{count}=await sb.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('is_read',false);unread=count||0;drawTabs()}
-function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();note('🔔 '+p.new.title)}).subscribe()}
+function listen(){if(chan)sb.removeChannel(chan);chan=sb.channel('n'+user.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+user.id},p=>{unread++;drawTabs();if(p.new.link_type=='announcement')annShow(p.new);else note('🔔 '+p.new.title)}).subscribe()}
 async function home(){if(cchan){sb.removeChannel(cchan);cchan=null}
  app.innerHTML=`<div class="top"><b>DriverMatch</b><span>${TITLES[tab]||''}</span></div>${tab&&tab!='dash'?`<button id="gback" style="margin:0 0 10px" onclick="tab='${BACK[tab]||'dash'}';home()">← Back</button>`:''}<div class="tabs" id="tabs"></div><div id="body">Loading…</div>`;
  drawTabs();unreadCount();const e=await V[tab]();if(e)note(e.message,1)}
@@ -351,6 +371,7 @@ Object.assign(V,{
 async function openAlert(id){const n=alerts.find(a=>a.id==id);if(!n)return;
  if(!n.is_read){n.is_read=true;if(unread>0)unread--;sb.from('notifications').update({is_read:true}).eq('id',id).then(()=>{})}
  const t=n.link_type;if(!t){drawTabs();return V.notifications()}
+ if(t=='announcement'){drawTabs();return annShow(n)}
  if(t=='chat'&&n.link_id){tab='matches';await home();return openChat(n.link_id)}
  if(TABS().some(x=>x[0]==t)){tab=t;return home()}
  drawTabs();V.notifications()}
