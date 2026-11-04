@@ -176,6 +176,8 @@ a{color:#fff;text-decoration:underline}
 .vf{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;padding:3px 10px;border-radius:99px;background:#6df08a;color:#04210f;margin:6px 0 0;font-style:normal}
 .pfb .vf{display:inline-flex;margin:4px 0 0}
 .vp{width:100%;height:170px;object-fit:cover;border-radius:16px;display:block;margin:0 0 10px}
+.pwr{position:relative}.pwr input{padding-right:50px}
+.eye{position:absolute;right:6px;top:4px;width:36px;height:36px;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;font-size:18px;line-height:1;border-radius:50%;cursor:pointer}
 .pfc{text-align:center}.pfc .row{margin-top:8px}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
@@ -198,7 +200,7 @@ function authView(signup){const nv=$('nav');if(nv)nv.innerHTML='';
  <div class="card"><h2>${signup?'Create '+mode+' account':'Log in as '+mode}</h2>
  ${signup?'<input id="fn" placeholder="Full name"><input id="ph" placeholder="Phone" inputmode="tel">':''}
  ${signup&&mode=='driver'?'<select id="lt"><option>Code 8</option><option>Code 10</option><option>Code 14</option><option>Bike (A1/A)</option></select>':''}
- <input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Password (min 6)">${signup?`<label class="mut" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px"><input id="ag" type="checkbox" style="width:auto;margin:3px 0 0"> <span>I am 18 or older and agree to the <a href="#" onclick="legal('terms',1,1);return false">Terms</a> and <a href="#" onclick="legal('privacy',1,1);return false">Privacy Policy</a>.</span></label>`:''}
+ <input id="em" type="email" placeholder="Email"><div class="pwr"><input id="pw" type="password" placeholder="Password (min 6)" autocomplete="current-password"><button type="button" class="eye" aria-label="Show password" onclick="togglePw(this)">👁</button></div>${signup?`<label class="mut" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px"><input id="ag" type="checkbox" style="width:auto;margin:3px 0 0"> <span>I am 18 or older and agree to the <a href="#" onclick="legal('terms',1,1);return false">Terms</a> and <a href="#" onclick="legal('privacy',1,1);return false">Privacy Policy</a>.</span></label>`:''}
  <button class="pri" onclick="${signup?'signUp()':'logIn()'}">${signup?'Sign up':'Log in'}</button>
  <p><a href="#" onclick="authView(${!signup});return false">${signup?'Have an account? Log in':'New here? Sign up'}</a></p><p class="mut" style="text-align:center"><a href="#" onclick="legal('terms',1,${!!signup});return false">Terms</a> · <a href="#" onclick="legal('privacy',1,${!!signup});return false">Privacy</a></p></div>`;
 }
@@ -269,13 +271,14 @@ V.more=async function(){
  $('body').innerHTML=`<div class="morep"><div class="morep-h">MORE</div><button class="mbtn cy" onclick="tab='insurance';home()">🛡️ Insurance</button><button class="mbtn cy" onclick="tab='payments';home()">💳 Payments</button><button class="mbtn cy" onclick="tab='help';home()">💬 Help & reports</button><button class="mbtn" onclick="legal('terms')">📜 Terms</button><button class="mbtn" onclick="legal('privacy')">🔒 Privacy</button><button class="mbtn out" onclick="out()">Log out</button></div>`;
 };
 V.payments=async function(){
- const[pr,vr]=await Promise.all([sb.from('payments').select('kind,vehicle_id,used,created_at').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);
+ const[pr,vr]=await Promise.all([sb.from('access_passes').select('kind,vehicle_id,used,created_at').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);
  const rows=pr.error?[]:(pr.data||[]);
  const act=(kind,vid)=>rows.some(r=>r.kind==kind&&!r.used&&(vid==null||String(r.vehicle_id)==String(vid)));
  const row=(title,on,vid)=>`<div class="card"><b>${title}</b><div style="margin:6px 0">${on?'<span class="vf">✔ Access active</span>':'<span class="mut">Access not active</span>'}</div>${on?'':`<button class="pri" onclick="getAccess(${vid?`'${vid}'`:'null'})">Activate access (free during trial)</button>`}</div>`;
  const mine=role=='driver'?row('Your access',act('driver_access'),null):((vr.data||[]).length?vr.data.map(v=>row(esc(v.make)+' '+esc(v.model),act('owner_vehicle',v.id),v.id)).join(''):'<div class="card"><div class="mut">Add a vehicle under My vehicles to activate access for it.</div></div>');
  $('body').innerHTML=`<div class="card"><h2>Payments</h2><div class="mut">${role=='driver'?'Pay once for access, then send requests to as many owners as you like. You only pay again after an owner accepts and your match opens. A decline does not use up your access.':'Owners pay per vehicle. Access for a vehicle is used up when a match for it opens, then you pay again.'}</div><div class="mut" style="margin-top:8px">The chat opens once both people have active access. Access is free while the app is in its trial.</div></div>${mine}<div class="card"><b>Payment problem?</b><div class="mut">Report it and we will look into it.</div><button class="pri" onclick="tab='help';home()">Report a payment issue</button></div>`;
 };
+function togglePw(b){const i=$('pw'),show=i.type=='password';i.type=show?'text':'password';b.textContent=show?'🙈':'👁';b.setAttribute('aria-label',show?'Hide password':'Show password')}
 async function getAccess(vid){const{error}=await sb.rpc('get_access_pass',{p_vehicle:vid||null});if(error)return note(error.message,1);note('Access activated.');home()}
 V.dash=async function(){
  await unreadCount();
