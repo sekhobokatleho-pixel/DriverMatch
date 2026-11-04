@@ -173,6 +173,9 @@ a{color:#fff;text-decoration:underline}
 .pfb em{display:block;font-style:normal;font-size:13px;opacity:.85;margin-top:2px}
 .av{width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.5);color:#fff;font-size:26px;font-weight:500}
 .av.big{width:112px;height:112px;font-size:44px;margin:4px auto 0;display:flex}
+.vf{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;padding:3px 10px;border-radius:99px;background:#6df08a;color:#04210f;margin:6px 0 0;font-style:normal}
+.pfb .vf{display:inline-flex;margin:4px 0 0}
+.vp{width:100%;height:170px;object-fit:cover;border-radius:16px;display:block;margin:0 0 10px}
 .pfc{text-align:center}.pfc .row{margin-top:8px}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
@@ -275,7 +278,7 @@ V.dash=async function(){
  const url=await avSigned(me.avatar_path);
   const t=[...(role=='driver'?[['vehicle_cards','🚗','Find vehicles'],['profile','💰','My offer']]:[['driver_cards','🧑','Find drivers'],['vehicles','🚙','My vehicles']]),['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','⚙️','More']];
  const bn=need&&need.miss?`<div class="hint" style="cursor:pointer" onclick="tab='myprofile';home()">📄 ${need.miss} document${need.miss>1?'s':''} still needed${need.rej?' · some were rejected':''}. Tap to upload in your profile.</div>`:'';
- $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w pfb" onclick="tab='myprofile';home()">${avHtml(url,full||role)}<span><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b><em>My profile and documents ›</em></span></div>${bn}<div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
+ $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w pfb" onclick="tab='myprofile';home()">${avHtml(url,full||role)}<span><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b>${need&&need.ver?VF:''}<em>My profile and documents ›</em></span></div>${bn}<div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
 };
 
 /* ---- Profile: picture (optional, private), personal details, documents ---- */
@@ -285,16 +288,18 @@ const avHtml=(url,nm,cls)=>url?`<img class="av ${cls||''}" src="${esc(url)}" alt
 async function docsNeed(){try{
  const[a,b]=await Promise.all([sb.from('documents').select('doc_type,status,vehicle_id,label').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id').eq('owner_id',user.id):{data:[]}]);
  if(a.error)return null;
- const ds=a.data||[],ok=ds.filter(d=>d.status!='rejected'),rej=ds.filter(d=>d.status=='rejected').length;
- const B=role=='owner'?['id','selfie_id','proof_of_ownership']:['id','licence','pdp','police_clearance','selfie_id'];
+ const ds=a.data||[],ok=ds.filter(d=>d.status!='rejected'),ap=ds.filter(d=>d.status=='approved'),rej=ds.filter(d=>d.status=='rejected').length;
+ const B=role=='owner'?['id','selfie_id']:['id','licence','pdp','police_clearance','selfie_id'];
  let miss=B.filter(t=>!ok.some(d=>d.doc_type==t)).length;
- if(role=='owner')(b.data||[]).forEach(v=>{['odometer','front','back','left','right','interior'].forEach(l=>{if(!ok.some(d=>d.doc_type=='vehicle_photo'&&d.vehicle_id==v.id&&d.label==l))miss++})});
- return{miss,rej}}catch(e){return null}}
+ const ver=B.every(t=>ap.some(d=>d.doc_type==t));
+ if(role=='owner')(b.data||[]).forEach(v=>{LB.forEach(l=>{if(!ok.some(d=>d.doc_type=='vehicle_photo'&&d.vehicle_id==v.id&&d.label==l))miss++});if(!ok.some(d=>d.doc_type=='proof_of_ownership'&&d.vehicle_id==v.id))miss++});
+ return{miss,rej,ver,wait:miss==0&&!ver}}catch(e){return null}}
+const VF='<span class="vf">✔ Verified</span>';
 V.myprofile=async function(){
- const[me,dp,d]=await Promise.all([loadMe(),role=='driver'?sb.from('driver_profiles').select('licence_type,city,suburb').eq('user_id',user.id).maybeSingle():{data:null},docsHtml()]);
+ const[me,dp,d,need]=await Promise.all([loadMe(),role=='driver'?sb.from('driver_profiles').select('licence_type,city,suburb').eq('user_id',user.id).maybeSingle():{data:null},docsHtml(),docsNeed()]);
  if(d.error)return d.error;
  const url=await avSigned(me.avatar_path),nm=me.full_name||(user.user_metadata||{}).full_name||'',p=dp&&dp.data;
- $('body').innerHTML=`<div class="card pfc">${avHtml(url,nm,'big')}<div class="mut">Optional. Only you can see this picture.</div><div class="row"><button onclick="$('avf').click()">${url?'Change picture':'Add picture'}</button>${url?'<button onclick="rmAvatar()">Remove</button>':''}</div><input id="avf" type="file" accept="image/*" style="display:none" onchange="setAvatar(this)"></div>
+ $('body').innerHTML=`<div class="card pfc">${avHtml(url,nm,'big')}${need&&need.ver?'<div style="margin:10px 0 0">'+VF+'</div><div class="mut">All your documents are approved.</div>':need&&need.wait?'<div class="mut" style="margin-top:10px">Not verified yet. Your documents are waiting for admin approval.</div>':'<div class="mut" style="margin-top:10px">Not verified yet. Upload your remaining documents below.</div>'}<div class="mut">Optional. Only you can see this picture.</div><div class="row"><button onclick="$('avf').click()">${url?'Change picture':'Add picture'}</button>${url?'<button onclick="rmAvatar()">Remove</button>':''}</div><input id="avf" type="file" accept="image/*" style="display:none" onchange="setAvatar(this)"></div>
  <div class="card"><h2>Personal details</h2><div class="mut">Full name</div><input id="pfn" value="${esc(nm)}" autocomplete="name"><div class="mut">Phone</div><input id="pph" value="${esc(me.phone||(user.user_metadata||{}).phone||'')}" inputmode="tel" autocomplete="tel"><div class="mut">Email</div><div style="margin:0 0 10px">${esc(me.email||user.email||'')}</div>${p?`<div class="mut">Licence</div><div style="margin:0 0 10px">${esc(p.licence_type||'Not set')}</div><div class="mut">Area</div><div style="margin:0 0 4px">${where(p)}</div><div class="mut">Change your area under My offer.</div>`:''}<button class="pri" onclick="saveMe()">Save details</button></div>
  <h2 style="margin:16px 0 8px">My documents</h2>`+d.html;
 };
@@ -313,26 +318,48 @@ async function setAvatar(inp){const f=inp.files[0];if(!f)return;note('Saving pic
 async function rmAvatar(){const old=(await loadMe()).avatar_path;
  const{error}=await sb.rpc('save_my_profile',{p_full_name:'',p_phone:'',p_clear_avatar:true});if(error)return note(error.message,1);
  if(old)await sb.storage.from('avatars').remove([old]);note('Picture removed.');home()}
+const LB=['odometer','front','back','left','right','interior'];
+const DN={id:'ID (certified copy)',selfie_id:'Selfie with ID',licence:'Licence',pdp:'PDP',police_clearance:'Police clearance',proof_of_ownership:'Vehicle registration',vehicle_photo:'Vehicle photo'};
+const dn=t=>DN[t]||t;
 async function docsHtml(){const[a,b]=await Promise.all([sb.from('documents').select('*').eq('user_id',user.id).order('created_at',{ascending:false}),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);if(a.error)return{error:a.error};
-  const vs=b.data||[];
-  const T=role=='owner'?['id','selfie_id','proof_of_ownership'].filter(t=>!a.data.some(d=>d.doc_type==t&&d.status!='rejected')):['id','licence','pdp','police_clearance','selfie_id'];
-  if(role=='owner'&&vs.length)T.push('vehicle_photo');
-  const LB=['odometer','front','back','left','right','interior'];
-  const done={};if(role=='owner')a.data.forEach(d=>{if(d.doc_type=='vehicle_photo'&&d.label&&d.vehicle_id&&d.status!='rejected'){(done[d.vehicle_id]=done[d.vehicle_id]||new Set()).add(d.label)}});
-  const prog=role=='owner'?(b.data||[]).map(v=>{const g=done[v.id]||new Set();const miss=LB.filter(x=>!g.has(x));return `<div class="card"><b>${esc(v.make)} ${esc(v.model)}</b><div class="mut">${g.size} of 6 photos${miss.length?' · missing: '+miss.join(', '):' · complete'}</div></div>`}).join(''):'';
-  const first=T[0];
-  const msg=role=='owner'&&!vs.length?'<div class="mut">Add a vehicle under My vehicles to unlock vehicle photos.</div>':'';
-  const form=T.length?`<div class="card"><h2>Upload a document</h2><select id="dt" onchange="togglePL()">${T.map(t=>`<option>${t}</option>`).join('')}</select><div id="cn" class="mut" style="display:${first=='id'?'':'none'}">Must be a certified copy of your ID (stamped and signed by a police station or commissioner of oaths).</div><select id="pl" style="display:${first=='vehicle_photo'?'':'none'}">${LB.map(t=>`<option value="${t}">${t=='odometer'?'odometer (kilometres)':t}</option>`).join('')}</select>${role=='owner'&&vs.length?`<select id="dv" style="display:${first=='vehicle_photo'?'':'none'}"><option value="">Choose vehicle</option>${vs.map(v=>`<option value="${v.id}">${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>`:''}<input id="fl" type="file" accept="image/*,application/pdf"><button class="pri" onclick="upload()">Upload</button>${msg}</div>`:`<div class="card"><h2>Upload a document</h2><div class="mut">Your basic documents are uploaded.</div>${msg}</div>`;
+  const vs=b.data||[],vn={};vs.forEach(v=>vn[v.id]=v.make+' '+v.model);
+  const live=a.data.filter(d=>d.status!='rejected'),appr=a.data.filter(d=>d.status=='approved');
+  const hasReg=v=>live.some(d=>d.doc_type=='proof_of_ownership'&&d.vehicle_id==v.id);
+  const T=role=='owner'?['id','selfie_id'].filter(t=>!live.some(d=>d.doc_type==t)):['id','licence','pdp','police_clearance','selfie_id'];
+  if(role=='owner'&&vs.length){T.push('vehicle_photo');if(vs.some(v=>!hasReg(v)))T.push('proof_of_ownership')}
+  const done={};if(role=='owner')live.forEach(d=>{if(d.doc_type=='vehicle_photo'&&d.label&&d.vehicle_id){(done[d.vehicle_id]=done[d.vehicle_id]||new Set()).add(d.label)}});
+  const prog=role=='owner'?vs.map(v=>{const g=done[v.id]||new Set(),miss=LB.filter(x=>!g.has(x)),reg=hasReg(v),need=[...miss,...(reg?[]:['registration'])];
+   const vok=LB.every(l=>appr.some(d=>d.doc_type=='vehicle_photo'&&d.vehicle_id==v.id&&d.label==l))&&appr.some(d=>d.doc_type=='proof_of_ownership'&&d.vehicle_id==v.id);
+   return `<div class="card"><b>${esc(v.make)} ${esc(v.model)}</b>${vok?'<div>'+VF+'</div>':''}<div class="mut">${g.size+(reg?1:0)} of 7 items${need.length?' · missing: '+need.join(', '):' · complete'}</div></div>`}).join(''):'';
+  const first=T[0],fv=first=='vehicle_photo'||first=='proof_of_ownership';
+  const msg=role=='owner'&&!vs.length?'<div class="mut">Add a vehicle under My vehicles to unlock vehicle photos and registration.</div>':'';
+  const form=T.length?`<div class="card"><h2>Upload a document</h2><select id="dt" onchange="togglePL()">${T.map(t=>`<option value="${t}">${dn(t)}</option>`).join('')}</select><div id="cn" class="mut" style="display:${first=='id'?'':'none'}">Must be a certified copy of your ID (stamped and signed by a police station or commissioner of oaths).</div><div id="rn" class="mut" style="display:${first=='proof_of_ownership'?'':'none'}">Upload the registration papers for the vehicle you choose below. Each vehicle needs its own.</div><select id="pl" onchange="togglePL()" style="display:${first=='vehicle_photo'?'':'none'}">${LB.map(t=>`<option value="${t}">${t=='odometer'?'odometer (kilometres)':t=='left'?'left (side view, shown to drivers)':t}</option>`).join('')}</select><div id="sn" class="mut" style="display:none">This side photo is shown to drivers so they can see the vehicle. Please keep the number plate out of the photo.</div>${role=='owner'&&vs.length?`<select id="dv" style="display:${fv?'':'none'}"><option value="">Choose vehicle</option>${vs.map(v=>`<option value="${v.id}">${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>`:''}<input id="fl" type="file" accept="image/*,application/pdf"><button class="pri" onclick="upload()">Upload</button>${msg}</div>`:`<div class="card"><h2>Upload a document</h2><div class="mut">Your basic documents are uploaded.</div>${msg}</div>`;
   return{html:form+prog
-  +a.data.map(d=>`<div class="card"><b>${esc(d.doc_type)}${d.label?' · '+esc(d.label):''}</b><div class="mut">${esc(d.status)}${d.admin_note?' · '+esc(d.admin_note):''}</div></div>`).join('')}}
+  +a.data.map(d=>`<div class="card"><b>${esc(dn(d.doc_type))}${d.label?' · '+esc(d.label):''}${d.vehicle_id&&vn[d.vehicle_id]?' · '+esc(vn[d.vehicle_id]):''}</b><div class="mut">${esc(d.status)}${d.admin_note?' · '+esc(d.admin_note):''}${d.doc_type=='proof_of_ownership'&&!d.vehicle_id?' · not linked to a vehicle, please upload it again for each vehicle':''}</div></div>`).join('')}}
 async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
-function togglePL(){const v=$('dt').value;[['pl','vehicle_photo'],['dv','vehicle_photo'],['cn','id']].forEach(([id,t])=>{const e=$(id);if(e)e.style.display=v==t?'':'none'})}
+function togglePL(){const v=$('dt').value,vt=v=='vehicle_photo'||v=='proof_of_ownership',sh=(id,on)=>{const e=$(id);if(e)e.style.display=on?'':'none'};
+ sh('pl',v=='vehicle_photo');sh('dv',vt);sh('cn',v=='id');sh('rn',v=='proof_of_ownership');sh('sn',v=='vehicle_photo'&&($('pl')||{}).value=='left')}
 async function upload(){const f=$('fl').files[0];if(!f)return note('Choose a file first.',1);
- const isVP=$('dt').value=='vehicle_photo';if(isVP&&!($('dv')||{}).value)return note('Choose which vehicle this photo is for.',1);
+ const t=$('dt').value,isP=t=='vehicle_photo',isV=isP||t=='proof_of_ownership',vid=isV?(($('dv')||{}).value||''):'';
+ if(isV&&!vid)return note('Choose which vehicle this is for.',1);
  const path=`${user.id}/${Date.now()}_${f.name.replace(/[^\w.-]/g,'_')}`;
  const u=await sb.storage.from('documents').upload(path,f);if(u.error)return note(u.error.message,1);
- const{error}=await sb.from('documents').insert({user_id:user.id,vehicle_id:isVP?$('dv').value:null,doc_type:$('dt').value,label:isVP?$('pl').value:null,file_path:path});
- error?note(error.message,1):(note('Uploaded. Waiting for admin approval.'),home())}
+ const lab=isP?$('pl').value:null;
+ const{error}=await sb.from('documents').insert({user_id:user.id,vehicle_id:isV?vid:null,doc_type:t,label:lab,file_path:path});
+ if(error)return note(error.message,1);
+ if(isP&&lab=='left')await sidePic(f,vid);
+ note('Uploaded. Waiting for admin approval.');home()}
+function shrinkW(f,w){return new Promise((ok,no)=>{const i=new Image(),u=URL.createObjectURL(f);
+ i.onload=()=>{const r=Math.min(1,w/i.width),c=document.createElement('canvas');c.width=Math.round(i.width*r);c.height=Math.round(i.height*r);c.getContext('2d').drawImage(i,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(b=>b?ok(b):no(new Error('x')),'image/jpeg',.8)};
+ i.onerror=()=>no(new Error('x'));i.src=u})}
+async function sidePic(f,vid){try{const b=await shrinkW(f,900),p=`${user.id}/${vid}_${Date.now()}.jpg`;
+ const u=await sb.storage.from('vehicle-pics').upload(p,b,{contentType:'image/jpeg'});if(u.error)return;
+ await sb.rpc('set_vehicle_photo',{p_vehicle:String(vid),p_path:p})}catch(e){}}
+async function vehiclePics(ids){try{if(!ids.length)return{};
+ const r=await sb.rpc('vehicle_pics',{p_ids:ids.map(String)});if(r.error||!r.data||!r.data.length)return{};
+ const byp={};r.data.forEach(x=>byp[x.photo_path]=x.vehicle_id);
+ const sg=await sb.storage.from('vehicle-pics').createSignedUrls(r.data.map(x=>x.photo_path),3600),m={};
+ (sg.data||[]).forEach(x=>{if(x.signedUrl&&byp[x.path])m[byp[x.path]]=x.signedUrl});return m}catch(e){return{}}}
 
 const CITIES=['Bloemfontein','Johannesburg','Pretoria','Cape Town','Durban','Gqeberha','East London','Polokwane','Mbombela','Kimberley','Welkom','Harrismith','Soweto','Pietermaritzburg','Rustenburg'];
 const dl=`<datalist id="cities">${CITIES.map(c=>`<option value="${c}">`).join('')}</datalist>`;
@@ -368,9 +395,10 @@ Object.assign(V,{
   const[l,dm]=await Promise.all([sb.from('vehicle_listings').select('*'),dists('vehicle_distances',me.lat,me.lng)]);if(l.error)return l.error;
   const offer=+me.weekly_offer||0,c=nz(me.city),has=me.lat!=null||!!c;
   const list=l.data.map(v=>{const d=dm[v.id];return{...v,d,area:near(d,v,c),fit:offer>0&&offer>=+v.weekly_amount}}).filter(v=>!radius||me.lat==null||v.area).sort(byNear);
+  const pics=await vehiclePics(list.map(v=>v.id));
   const n=list.filter(v=>v.area&&v.fit).length;
   $('body').innerHTML=(has?`${radSel()}<div class="hint"><b>${n}</b> vehicle${n==1?'':'s'} ${radius&&me.lat!=null?'within '+radius+' km':'near you'}${offer?' at or below your offer of '+rand(offer)+'/week':''}.</div>`:`<div class="hint">Turn on your location in <a href="#" onclick="tab='profile';home();return false">My offer</a> to see vehicles near you.</div>`)
-  +(list.length?list.map(v=>`<div class="card">${v.area?'<span class="tag">Near you</span>':''}${v.fit?'<span class="tag">Fits your offer</span>':''}<div><b>${esc(v.make)} ${esc(v.model)}</b> ${esc(v.year)}</div><div class="mut">${esc(v.vehicle_type)} · ${esc(v.kms)} km · ${where(v)}${km(v.d)}</div><div>Owner asks <b>${rand(v.weekly_amount)}</b>/week</div><button class="pri" onclick="ask('${v.id}')">Request match</button></div>`).join(''):empty('No vehicles found. Try a wider distance.'))},
+  +(list.length?list.map(v=>`<div class="card">${pics[v.id]?`<img class="vp" src="${esc(pics[v.id])}" alt="">`:''}${v.area?'<span class="tag">Near you</span>':''}${v.fit?'<span class="tag">Fits your offer</span>':''}<div><b>${esc(v.make)} ${esc(v.model)}</b> ${esc(v.year)}</div><div class="mut">${esc(v.vehicle_type)} · ${esc(v.kms)} km · ${where(v)}${km(v.d)}</div><div style="margin:0 0 6px">${VF}</div><div>Owner asks <b>${rand(v.weekly_amount)}</b>/week</div><button class="pri" onclick="ask('${v.id}')">Request match</button></div>`).join(''):empty('No vehicles found. Try a wider distance.'))},
  async driver_cards(){const b=await sb.from('vehicles').select('id,make,model,weekly_amount,city,suburb,lat,lng').eq('owner_id',user.id),vs=b.data||[];
   if(!vs.length){$('body').innerHTML=empty('Add a vehicle first in the My vehicles tab. Drivers are matched to its area and weekly amount.');return}
   if(!vs.find(v=>v.id==selVeh))selVeh=vs[0].id;const v=vs.find(x=>x.id==selVeh),c=nz(v.city);
@@ -378,7 +406,7 @@ Object.assign(V,{
   const list=a.data.map(d=>{const k=dm[d.id];return{...d,d:k,area:near(k,d,c),fit:+d.weekly_offer>=+v.weekly_amount}}).filter(d=>!radius||v.lat==null||d.area).sort(byNear);
   const n=list.filter(d=>d.area&&d.fit).length;
   $('body').innerHTML=`<select onchange="selVeh=this.value;home()">${vs.map(x=>`<option value="${x.id}" ${x.id==selVeh?'selected':''}>${esc(x.make)} ${esc(x.model)} · ${rand(x.weekly_amount)}/week</option>`).join('')}</select>${v.lat!=null||c?radSel():''}<div class="hint"><b>${n}</b> driver${n==1?'':'s'} ${radius&&v.lat!=null?'within '+radius+' km':'in '+esc(v.city||'your area')} willing to pay ${rand(v.weekly_amount)}/week or more.${v.lat==null?' Tap “Update location” on the vehicle in My vehicles to match by distance.':''}</div>`
-  +(list.length?list.map(d=>`<div class="card">${d.area?'<span class="tag">Near you</span>':''}${d.fit?'<span class="tag">Meets your price</span>':''}<div><b>${esc(fn[d.id]||d.driver_code)}</b> · ${esc(d.licence_type)}</div><div class="mut">${where(d)}${km(d.d)} · Documents verified</div><div>Offers <b>${d.weekly_offer?rand(d.weekly_offer):'not set'}</b>/week</div><button class="pri" onclick="ask('${d.id}')">Request match</button></div>`).join(''):empty('No verified drivers found. Try a wider distance.'))},
+  +(list.length?list.map(d=>`<div class="card">${d.area?'<span class="tag">Near you</span>':''}${d.fit?'<span class="tag">Meets your price</span>':''}<div><b>${esc(fn[d.id]||d.driver_code)}</b> · ${esc(d.licence_type)}</div><div class="mut">${where(d)}${km(d.d)}</div><div style="margin:0 0 6px">${VF}</div><div>Offers <b>${d.weekly_offer?rand(d.weekly_offer):'not set'}</b>/week</div><button class="pri" onclick="ask('${d.id}')">Request match</button></div>`).join(''):empty('No verified drivers found. Try a wider distance.'))},
  async profile(){const{data,error}=await sb.from('driver_profiles').select('*').eq('user_id',user.id).maybeSingle();if(error)return error;const p=data||{};
   $('body').innerHTML=`${dl}<div class="card"><h2>My weekly offer and area</h2><div class="mut">Owners near you are told when your offer fits their price, before you pay. Status: ${esc(p.verification_status||'pending')}</div><input id="wo" type="number" placeholder="Weekly amount I’m willing to pay (R)" value="${esc(p.weekly_offer)}">${locBtn}${p.lat!=null?'<div class="mut">Location saved ✓</div>':''}<input id="ci" list="cities" placeholder="Town / city" value="${esc(p.city)}"><input id="su" placeholder="Suburb / township (optional)" value="${esc(p.suburb)}"><button class="pri" onclick="saveProfile()">Save</button></div>`},
  async vehicles(){const{data,error}=await sb.from('vehicles').select('*').eq('owner_id',user.id).order('created_at',{ascending:false});if(error)return error;
