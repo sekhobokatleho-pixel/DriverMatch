@@ -269,8 +269,14 @@ V.more=async function(){
  $('body').innerHTML=`<div class="morep"><div class="morep-h">MORE</div><button class="mbtn cy" onclick="tab='insurance';home()">🛡️ Insurance</button><button class="mbtn cy" onclick="tab='payments';home()">💳 Payments</button><button class="mbtn cy" onclick="tab='help';home()">💬 Help & reports</button><button class="mbtn" onclick="legal('terms')">📜 Terms</button><button class="mbtn" onclick="legal('privacy')">🔒 Privacy</button><button class="mbtn out" onclick="out()">Log out</button></div>`;
 };
 V.payments=async function(){
- $('body').innerHTML=`<div class="card"><h2>Payments</h2><div class="mut">Drivers pay for access, then can send requests to as many owners as they like. Owners pay per vehicle. Fees are shown in the app before you pay.</div></div><div class="card"><b>After a match</b><div class="mut">Once a match is made or cancelled, that access is used up and you pay again to send new requests. Fees are not refundable once access has been used.</div></div><div class="card"><b>Payment problem?</b><div class="mut">Report it and we will look into it.</div><button class="pri" onclick="tab='help';home()">Report a payment issue</button></div>`;
+ const[pr,vr]=await Promise.all([sb.from('payments').select('kind,vehicle_id,used,created_at').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);
+ const rows=pr.error?[]:(pr.data||[]);
+ const act=(kind,vid)=>rows.some(r=>r.kind==kind&&!r.used&&(vid==null||String(r.vehicle_id)==String(vid)));
+ const row=(title,on,vid)=>`<div class="card"><b>${title}</b><div style="margin:6px 0">${on?'<span class="vf">✔ Access active</span>':'<span class="mut">Access not active</span>'}</div>${on?'':`<button class="pri" onclick="getAccess(${vid?`'${vid}'`:'null'})">Activate access (free during trial)</button>`}</div>`;
+ const mine=role=='driver'?row('Your access',act('driver_access'),null):((vr.data||[]).length?vr.data.map(v=>row(esc(v.make)+' '+esc(v.model),act('owner_vehicle',v.id),v.id)).join(''):'<div class="card"><div class="mut">Add a vehicle under My vehicles to activate access for it.</div></div>');
+ $('body').innerHTML=`<div class="card"><h2>Payments</h2><div class="mut">${role=='driver'?'Pay once for access, then send requests to as many owners as you like. You only pay again after an owner accepts and your match opens. A decline does not use up your access.':'Owners pay per vehicle. Access for a vehicle is used up when a match for it opens, then you pay again.'}</div><div class="mut" style="margin-top:8px">The chat opens once both people have active access. Access is free while the app is in its trial.</div></div>${mine}<div class="card"><b>Payment problem?</b><div class="mut">Report it and we will look into it.</div><button class="pri" onclick="tab='help';home()">Report a payment issue</button></div>`;
 };
+async function getAccess(vid){const{error}=await sb.rpc('get_access_pass',{p_vehicle:vid||null});if(error)return note(error.message,1);note('Access activated.');home()}
 V.dash=async function(){
  await unreadCount();
  const[me,need]=await Promise.all([loadMe(),docsNeed()]);
@@ -336,7 +342,8 @@ async function docsHtml(){const[a,b]=await Promise.all([sb.from('documents').sel
   const form=T.length?`<div class="card"><h2>Upload a document</h2><select id="dt" onchange="togglePL()">${T.map(t=>`<option value="${t}">${dn(t)}</option>`).join('')}</select><div id="cn" class="mut" style="display:${first=='id'?'':'none'}">Must be a certified copy of your ID (stamped and signed by a police station or commissioner of oaths).</div><div id="rn" class="mut" style="display:${first=='proof_of_ownership'?'':'none'}">Upload the registration papers for the vehicle you choose below. Each vehicle needs its own.</div><select id="pl" onchange="togglePL()" style="display:${first=='vehicle_photo'?'':'none'}">${LB.map(t=>`<option value="${t}">${t=='odometer'?'odometer (kilometres)':t=='left'?'left (side view, shown to drivers)':t}</option>`).join('')}</select><div id="sn" class="mut" style="display:none">This side photo is shown to drivers so they can see the vehicle. Please keep the number plate out of the photo.</div>${role=='owner'&&vs.length?`<select id="dv" style="display:${fv?'':'none'}"><option value="">Choose vehicle</option>${vs.map(v=>`<option value="${v.id}">${esc(v.make)} ${esc(v.model)}</option>`).join('')}</select>`:''}<input id="fl" type="file" accept="image/*,application/pdf"><button class="pri" onclick="upload()">Upload</button>${msg}</div>`:`<div class="card"><h2>Upload a document</h2><div class="mut">Your basic documents are uploaded.</div>${msg}</div>`;
   return{html:form+prog
   +a.data.map(d=>`<div class="card"><b>${esc(dn(d.doc_type))}${d.label?' · '+esc(d.label):''}${d.vehicle_id&&vn[d.vehicle_id]?' · '+esc(vn[d.vehicle_id]):''}</b><div class="mut">${esc(d.status)}${d.admin_note?' · '+esc(d.admin_note):''}${d.doc_type=='proof_of_ownership'&&!d.vehicle_id?' · not linked to a vehicle, please upload it again for each vehicle':''}</div></div>`).join('')}}
-async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);error?note(error.message,1):home()}
+async function respond(id,s){const{error}=await sb.from('requests').update({status:s,responded_at:new Date().toISOString()}).eq('id',id);
+ if(error){note(error.message,1);if(/access|activate/i.test(error.message)){tab='payments';home()}return}home()}
 function togglePL(){const v=$('dt').value,vt=v=='vehicle_photo'||v=='proof_of_ownership',sh=(id,on)=>{const e=$(id);if(e)e.style.display=on?'':'none'};
  sh('pl',v=='vehicle_photo');sh('dv',vt);sh('cn',v=='id');sh('rn',v=='proof_of_ownership');sh('sn',v=='vehicle_photo'&&($('pl')||{}).value=='left')}
 async function upload(){const f=$('fl').files[0];if(!f)return note('Choose a file first.',1);
@@ -431,7 +438,8 @@ async function editArea(id){note('Getting your location…');let u;
  const{error}=await sb.from('vehicles').update(u).eq('id',id);error?note(error.message,1):(note('Location updated.'),home())}
 async function ask(id){const r=role=='driver'?{driver_id:user.id,vehicle_id:id}:{driver_id:id,vehicle_id:selVeh};
  if(!r.vehicle_id)return note('Add a vehicle first.',1);
- const{error}=await sb.from('requests').insert({...r,initiated_by:role});note(error?error.message:'Request sent.',!!error)}
+ const{error}=await sb.from('requests').insert({...r,initiated_by:role});
+ if(error){note(error.message,1);if(/access|activate/i.test(error.message)){tab='payments';home()}return}note('Request sent.')}
 /* ---- Alerts, matches, chat, insurance ---- */
 const tm=d=>new Date(d).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
 const bub=m=>`<div class="b ${m.sender_id==user.id?'me':'th'}">${esc(m.body)}<small>${tm(m.created_at)}</small></div>`;
@@ -439,7 +447,7 @@ let chatReq=null,offers=[],alerts=[],showPast=false,showPastReq=false,showOld=fa
 async function loadNames(){if(role!='owner')return{};try{const{data}=await sb.rpc('driver_first_names');const m={};(data||[]).forEach(x=>m[x.id]=x.first_name);return m}catch(e){note(errMsg(e),1);return{}}}
 Object.assign(V,{
  async requests(){const{data,error}=await sb.from('requests').select('*').in('status',['pending','declined']).order('created_at',{ascending:false});if(error)return error;const fn=await loadNames();
-  const card=r=>`<div class="card"><b>Request · ${esc(fn[r.driver_id]||r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}','accepted')">Accept</button> <button onclick="respond('${r.id}','declined')">Decline</button>`:''}</div>`,
+  const card=r=>`<div class="card"><b>Request · ${esc(fn[r.driver_id]||r.id.slice(0,8))}</b><div class="mut">${esc(r.status)} · started by ${esc(r.initiated_by)}</div>${r.status=='pending'?`<div style="margin:0 0 6px"><span class="vf">✔ ${r.initiated_by=='driver'?'Driver':'Owner'}'s access is active</span></div>`:''}${r.status=='pending'&&r.initiated_by!=role?`<button class="pri" onclick="respond('${r.id}','accepted')">Accept</button> <button onclick="respond('${r.id}','declined')">Decline</button>`:''}</div>`,
    open=data.filter(r=>r.status=='pending'),past=data.filter(r=>r.status!='pending');
   $('body').innerHTML=(open.length?open.map(card).join(''):empty('No open requests. Accepted ones move to Matches.'))+(past.length?`<button onclick="showPastReq=!showPastReq;home()">${showPastReq?'Hide':'Show'} past requests (${past.length})</button>`:'')+(showPastReq?past.map(card).join(''):'')},
  async matches(){const a=await sb.from('requests').select('*').eq('status','accepted').order('created_at',{ascending:false});if(a.error)return a.error;
