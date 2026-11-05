@@ -179,6 +179,7 @@ a{color:#fff;text-decoration:underline}
 .pwr{position:relative}.pwr input{padding-right:50px}
 .eye{position:absolute;right:6px;top:4px;width:36px;height:36px;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;font-size:18px;line-height:1;border-radius:50%;cursor:pointer}
 .pfc{text-align:center}.pfc .row{margin-top:8px}
+.slot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--bd);text-align:left}.slot .sl{flex:1}.slot .mut{margin:2px 0 0}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -221,8 +222,8 @@ async function start(u){user=u;
  if(us&&us.status!=='active'){await sb.auth.signOut();user=null;return note('Your account has been '+us.status+' by the admin. Please contact support.',1)}
  role=await ensure(u);
  if(!role||role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
- note('');tab='dash';listen();home();annLoad()}
-async function out(){annQ.length=0;const ao=$('ann');if(ao)ao.remove();if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
+ note('');tab='dash';listen();if(await gate())return;home();annLoad()}
+async function out(){clearTimeout(obT);ob=false;annQ.length=0;const ao=$('ann');if(ao)ao.remove();if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
 
 let unread=0,chan=null,cchan=null;
 /* ---- Admin announcements: popup + stays in Alerts ---- */
@@ -298,7 +299,7 @@ async function docsNeed(){try{
  const[a,b]=await Promise.all([sb.from('documents').select('doc_type,status,vehicle_id,label').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id').eq('owner_id',user.id):{data:[]}]);
  if(a.error)return null;
  const ds=a.data||[],ok=ds.filter(d=>d.status!='rejected'),ap=ds.filter(d=>d.status=='approved'),rej=ds.filter(d=>d.status=='rejected').length;
- const B=role=='owner'?['id','selfie_id']:['id','licence','pdp','police_clearance','selfie_id'];
+ const B=role=='owner'?['id','selfie_id','proof_of_address']:['id','licence','pdp','police_clearance','selfie_id','proof_of_address'];
  let miss=B.filter(t=>!ok.some(d=>d.doc_type==t)).length;
  const ver=B.every(t=>ap.some(d=>d.doc_type==t));
  if(role=='owner')(b.data||[]).forEach(v=>{LB.forEach(l=>{if(!ok.some(d=>d.doc_type=='vehicle_photo'&&d.vehicle_id==v.id&&d.label==l))miss++});if(!ok.some(d=>d.doc_type=='proof_of_ownership'&&d.vehicle_id==v.id))miss++});
@@ -328,13 +329,13 @@ async function rmAvatar(){const old=(await loadMe()).avatar_path;
  const{error}=await sb.rpc('save_my_profile',{p_full_name:'',p_phone:'',p_clear_avatar:true});if(error)return note(error.message,1);
  if(old)await sb.storage.from('avatars').remove([old]);note('Picture removed.');home()}
 const LB=['odometer','front','back','left','right','interior'];
-const DN={id:'ID (certified copy)',selfie_id:'Selfie with ID',licence:'Licence',pdp:'PDP',police_clearance:'Police clearance',proof_of_ownership:'Vehicle registration',vehicle_photo:'Vehicle photo'};
+const DN={proof_of_address:'Proof of address',id:'ID (certified copy)',selfie_id:'Selfie with ID',licence:'Licence',pdp:'PDP',police_clearance:'Police clearance',proof_of_ownership:'Vehicle registration',vehicle_photo:'Vehicle photo'};
 const dn=t=>DN[t]||t;
 async function docsHtml(){const[a,b]=await Promise.all([sb.from('documents').select('*').eq('user_id',user.id).order('created_at',{ascending:false}),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);if(a.error)return{error:a.error};
   const vs=b.data||[],vn={};vs.forEach(v=>vn[v.id]=v.make+' '+v.model);
   const live=a.data.filter(d=>d.status!='rejected'),appr=a.data.filter(d=>d.status=='approved');
   const hasReg=v=>live.some(d=>d.doc_type=='proof_of_ownership'&&d.vehicle_id==v.id);
-  const T=role=='owner'?['id','selfie_id'].filter(t=>!live.some(d=>d.doc_type==t)):['id','licence','pdp','police_clearance','selfie_id'];
+  const T=role=='owner'?['id','selfie_id','proof_of_address'].filter(t=>!live.some(d=>d.doc_type==t)):['id','licence','pdp','police_clearance','selfie_id','proof_of_address'];
   if(role=='owner'&&vs.length){T.push('vehicle_photo');if(vs.some(v=>!hasReg(v)))T.push('proof_of_ownership')}
   const done={};if(role=='owner')live.forEach(d=>{if(d.doc_type=='vehicle_photo'&&d.label&&d.vehicle_id){(done[d.vehicle_id]=done[d.vehicle_id]||new Set()).add(d.label)}});
   const prog=role=='owner'?vs.map(v=>{const g=done[v.id]||new Set(),miss=LB.filter(x=>!g.has(x)),reg=hasReg(v),need=[...miss,...(reg?[]:['registration'])];
@@ -426,7 +427,7 @@ async function saveProfile(){const{error}=await sb.from('driver_profiles').updat
  error?note(error.message,1):(loc=null,note('Saved.'),home())}
 async function addVehicle(){if(!$('ci').value.trim()||!+$('wk').value)return note('Add the weekly amount and the town/city.',1);
  const{error}=await sb.from('vehicles').insert({owner_id:user.id,vehicle_type:$('vt').value,make:$('mk').value,model:$('md').value,year:+$('yr').value||null,kms:+$('km').value||null,weekly_amount:+$('wk').value,city:$('ci').value.trim(),suburb:$('su').value.trim(),...locSave()});
- error?note(error.message,1):(loc=null,note('Vehicle added. It will show once approved.'),home())}
+ error?note(error.message,1):(loc=null,note('Vehicle added. It will show once approved.'),ob?gateRun():home())}
 async function removeV(id){
  await sb.from('documents').delete().eq('vehicle_id',id);
  const{data,error}=await sb.from('vehicles').delete().eq('id',id).select();
@@ -523,6 +524,49 @@ privacy:{t:"Privacy Policy",s:[
 ["Age","DriverMatch is for people 18 and older."]]}};
 function legal(k,a,sg){const L=LEGAL[k];if(cchan){sb.removeChannel(cchan);cchan=null}
  app.innerHTML=`<button onclick="${a?'authView('+!!sg+')':'home()'}">← Back</button><h1>${L.t}</h1>`+L.s.map(([h,t])=>`<h2>${h}</h2><p>${t}</p>`).join('')+`<p class="mut">Last updated: 29 October 2026</p>`}
+/* ---- First login: details, documents, verification wait ---- */
+let ob=false,pend=null,obd={},obT=null;
+const REQD=()=>role=='owner'?[['id','ID (certified copy)'],['selfie_id','Selfie holding your ID'],['proof_of_address','Proof of address']]:[['id','ID (certified copy)'],['selfie_id','Selfie holding your ID'],['proof_of_address','Proof of address'],['licence','Driver\u2019s licence'],['pdp','PDP (professional driving permit)'],['police_clearance','Police clearance']];
+const HINT={id:'Certified copy, stamped and signed by a police station or commissioner of oaths.',selfie_id:'A clear photo of you holding your ID next to your face.',proof_of_address:'A utility bill, bank statement or lease showing your name and address.',licence:'Front and back if possible.',pdp:'Your valid professional driving permit.',police_clearance:'A recent police clearance certificate.'};
+const CHIP={approved:'\u2714 Approved',pending:'\u23f3 Waiting for review',rejected:'\u2716 Rejected',missing:'Not uploaded'};
+const dstat=(ds,t,vid,lab)=>{const m=ds.filter(d=>d.doc_type==t&&(!vid||d.vehicle_id==vid)&&(!lab||d.label==lab));
+ return m.some(d=>d.status=='approved')?['approved']:m.some(d=>d.status!='rejected')?['pending']:m.length?['rejected',m[0].admin_note||'']:['missing']};
+const slot=(ds,t,l,vid,lab,h)=>{const[s,n]=dstat(ds,t,vid,lab);return `<div class="slot"><div class="sl"><b>${l}</b><div class="mut">${CHIP[s]}${n?' \u00b7 '+esc(n):''}</div>${h&&s!='approved'?`<div class="mut">${h}</div>`:''}</div>${s=='approved'?'<span class="vf">\u2714</span>':`<button class="${s=='pending'?'':'pri'}" onclick="obPick('${t}','${vid||''}','${lab||''}')">${s=='missing'?'Upload':s=='rejected'?'Re-upload':'Replace'}</button>`}</div>`};
+async function gate(){ob=false;clearTimeout(obT);
+ const[p,d,v]=await Promise.all([sb.from('profiles').select('onboarded,address,age,onboarding_submitted_at').eq('id',user.id).maybeSingle(),sb.from('documents').select('doc_type,status,vehicle_id,label,admin_note').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);
+ if(p.error||!p.data||p.data.onboarded)return false;
+ const ds=d.data||[];
+ if(REQD().every(([t])=>dstat(ds,t)[0]=='approved')){const f=await sb.rpc('finish_onboarding');if(!f.error&&f.data){note('You\u2019re verified. Welcome to DriverMatch!');return false}}
+ ob=true;obView(p.data,ds,v.data||[]);return true}
+async function gateRun(){if(!(await gate())){tab='dash';home();annLoad()}}
+function obView(p,ds,vs){const R=REQD(),bad=R.filter(([t])=>['missing','rejected'].includes(dstat(ds,t)[0])),rej=R.some(([t])=>dstat(ds,t)[0]=='rejected');
+ if(p.onboarding_submitted_at&&!bad.length&&p.address&&p.age>=18)return obWait(p,ds,R);
+ app.innerHTML=`<div class="logo">\ud83d\ude97</div><h1>Let\u2019s get you verified</h1>
+ <div class="hint">${role=='owner'?'To use DriverMatch we first need to confirm who you are. Your vehicles can be added once you are verified, or you can start one below.':'To use DriverMatch we first need to confirm who you are and that you may drive. Upload every document below, then wait for verification.'}<br><br>\u23f1 Verification can take up to <b>48 hours</b>.</div>
+ ${rej?'<div class="hint" style="border-color:var(--er)">Some documents were rejected. Please upload them again.</div>':''}
+ <div class="card"><h2>1. Your details</h2><input id="oba" placeholder="Home address (street, suburb, town)" value="${esc(obd.a??p.address??'')}" oninput="obd.a=this.value" autocomplete="street-address"><input id="obg" type="number" inputmode="numeric" placeholder="Age" value="${esc(obd.g??p.age??'')}" oninput="obd.g=this.value"></div>
+ <div class="card"><h2>2. Documents</h2>${R.map(([t,l])=>slot(ds,t,l,'','',HINT[t])).join('')}</div>
+ ${role=='owner'?obVeh(ds,vs):''}
+ <button class="pri" style="width:100%;margin:0 0 10px" onclick="obSubmit()">Submit for verification</button>
+ <input id="obf" type="file" style="display:none" onchange="obUp(this)"><p class="mut" style="text-align:center"><a href="#" onclick="out();return false">Log out</a></p>`}
+function obVeh(ds,vs){return `${dl}<div class="card"><h2>3. Add a vehicle (optional)</h2><div class="mut">Do it now or after you are verified.</div>`+vs.map(v=>`<div class="card"><b>${esc(v.make)} ${esc(v.model)}</b>${LB.map(l=>slot(ds,'vehicle_photo',l=='odometer'?'Odometer photo':l[0].toUpperCase()+l.slice(1)+' photo',v.id,l)).join('')}${slot(ds,'proof_of_ownership','Vehicle registration',v.id,'')}</div>`).join('')+`<button onclick="var e=$('obv');e.style.display=e.style.display=='none'?'block':'none'">\uff0b Add a vehicle</button><div id="obv" style="display:none;margin-top:10px"><select id="vt"><option>car</option><option>bike</option></select><input id="mk" placeholder="Make"><input id="md" placeholder="Model"><input id="yr" type="number" placeholder="Year"><input id="km" type="number" placeholder="Kms"><input id="wk" type="number" placeholder="Weekly amount I want to collect (R)">${locBtn}<input id="ci" list="cities" placeholder="Town / city where it is"><input id="su" placeholder="Suburb / township (optional)"><button class="pri" onclick="addVehicle()">Save vehicle</button></div></div>`}
+function obWait(p,ds,R){app.innerHTML=`<div class="logo">\u23f3</div><h1>Verification in progress</h1><div class="card" style="text-align:center"><h2>Thanks, we have your details</h2><p>We\u2019re checking your documents. This can take up to <b>48 hours</b>.</p><p class="mut">Submitted ${new Date(p.onboarding_submitted_at).toLocaleString('en-ZA')}. You can close the app. Log in again once you\u2019re approved and you\u2019ll go straight in.</p></div><div class="card"><h2>Your documents</h2>${R.map(([t,l])=>`<div class="slot"><div class="sl"><b>${l}</b></div><span class="mut">${CHIP[dstat(ds,t)[0]]}</span></div>`).join('')}</div><button class="pri" style="width:100%;margin:0 0 10px" onclick="gateRun()">Check status</button><p class="mut" style="text-align:center"><a href="#" onclick="out();return false">Log out</a></p>`;
+ obT=setTimeout(gateRun,60000)}
+function obPick(t,vid,lab){pend={t,vid,lab};const i=$('obf');i.accept=t=='selfie_id'?'image/*':'image/*,application/pdf';i.click()}
+async function obUp(inp){const f=inp.files[0];inp.value='';if(!f||!pend)return;const{t,vid,lab}=pend;note('Uploading\u2026');
+ const path=`${user.id}/${Date.now()}_${f.name.replace(/[^\w.-]/g,'_')}`;
+ const u=await sb.storage.from('documents').upload(path,f);if(u.error)return note(u.error.message,1);
+ const{error}=await sb.from('documents').insert({user_id:user.id,vehicle_id:vid||null,doc_type:t,label:lab||null,file_path:path});if(error)return note(error.message,1);
+ if(t=='vehicle_photo'&&lab=='left')await sidePic(f,vid);
+ note('Uploaded.');gateRun()}
+async function obSubmit(){const a=($('oba').value||'').trim(),g=+$('obg').value;
+ if(a.length<8)return note('Enter your full home address.',1);
+ if(!(g>=18&&g<=100))return note('You must be 18 or older. Enter your age.',1);
+ const{data:ds}=await sb.from('documents').select('doc_type,status').eq('user_id',user.id);
+ const m=REQD().filter(([t])=>['missing','rejected'].includes(dstat(ds||[],t)[0])).map(x=>x[1]);
+ if(m.length)return note('Still needed: '+m.join(', ')+'.',1);
+ const{error}=await sb.rpc('submit_onboarding',{p_address:a,p_age:g});if(error)return note(error.message,1);
+ obd={};note('Submitted. We will review your documents.');gateRun()}
 /* ---- Phone push ---- */
 const VAPID='BEE7l9sIC_qp3tfF7sH6JqQXnW2thmdV4ujse0S0EqMrYeCwgPUeECBNwMGqqvtrEqiLLdwmS2gcOhzYZOpa50I';
 const u8=t=>{const r=atob((t+'='.repeat((4-t.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0))};
