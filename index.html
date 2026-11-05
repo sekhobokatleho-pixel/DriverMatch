@@ -199,10 +199,11 @@ function authView(signup){const nv=$('nav');if(nv)nv.innerHTML='';
  app.innerHTML=`<div class="logo">🚗</div><h1 style="text-align:center">DriverMatch</h1>
  <div class="row"><button class="${mode=='driver'?'on':''}" onclick="mode='driver';authView(${signup})">I’m a driver</button><button class="${mode=='owner'?'on':''}" onclick="mode='owner';authView(${signup})">I’m an owner</button></div>
  <div class="card"><h2>${signup?'Create '+mode+' account':'Log in as '+mode}</h2>
+ <button onclick="oauth()">Continue with Google</button><div class="mut" style="text-align:center;margin:6px 0">or use email</div>
  ${signup?'<input id="fn" placeholder="Full name"><input id="ph" placeholder="Phone" inputmode="tel">':''}
  ${signup&&mode=='driver'?'<select id="lt"><option>Code 8</option><option>Code 10</option><option>Code 14</option><option>Bike (A1/A)</option></select>':''}
  <input id="em" type="email" placeholder="Email"><div class="pwr"><input id="pw" type="password" placeholder="Password (min 6)" autocomplete="current-password"><button type="button" class="eye" aria-label="Show password" onclick="togglePw(this)">👁</button></div>${signup?`<label class="mut" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px"><input id="ag" type="checkbox" style="width:auto;margin:3px 0 0"> <span>I am 18 or older and agree to the <a href="#" onclick="legal('terms',1,1);return false">Terms</a> and <a href="#" onclick="legal('privacy',1,1);return false">Privacy Policy</a>.</span></label>`:''}
- <button class="pri" onclick="${signup?'signUp()':'logIn()'}">${signup?'Sign up':'Log in'}</button>
+ <button class="pri" onclick="${signup?'signUp()':'logIn()'}">${signup?'Sign up':'Log in'}</button>${signup?'':'<p style="text-align:center"><a href="#" onclick="forgot();return false">Forgot password?</a></p>'}
  <p><a href="#" onclick="authView(${!signup});return false">${signup?'Have an account? Log in':'New here? Sign up'}</a></p><p class="mut" style="text-align:center"><a href="#" onclick="legal('terms',1,${!!signup});return false">Terms</a> · <a href="#" onclick="legal('privacy',1,${!!signup});return false">Privacy</a></p></div>`;
 }
 async function ensure(u){const m=u.user_metadata||{};
@@ -215,13 +216,23 @@ async function signUp(){if(!$('ag').checked)return note('Please accept the Terms
  const{data,error}=await sb.auth.signUp({email:$('em').value,password:$('pw').value,options:{data:m}});
  if(error)return note(error.message,1);
  if(data.session)return start(data.user);note('Check your email to confirm, then log in.')}
+let recov=false;
+async function forgot(){const e=($('em').value||'').trim();if(!e)return note('Type your email above first, then tap Forgot password.',1);
+ const{error}=await sb.auth.resetPasswordForEmail(e,{redirectTo:location.origin+location.pathname});
+ if(error)return note(error.message,1);note('If that email has an account, we\u2019ve sent a reset link. Check your inbox and spam. Signed up with Google? Use the Google button instead.')}
+function newPassView(){recov=true;app.innerHTML=`<div class="logo">\ud83d\udd11</div><h1 style="text-align:center">Set a new password</h1><div class="card"><input id="np" type="password" placeholder="New password (min 6)" autocomplete="new-password"><input id="np2" type="password" placeholder="Repeat new password" autocomplete="new-password"><button class="pri" onclick="setPass()">Save password</button></div>`}
+async function setPass(){const a=$('np').value;if(a.length<6)return note('Password must be at least 6 characters.',1);if(a!==$('np2').value)return note('The passwords don\u2019t match.',1);
+ const{error}=await sb.auth.updateUser({password:a});if(error)return note(error.message,1);
+ recov=false;try{history.replaceState(null,'',location.pathname)}catch(e){}note('Password updated.');afterAuth((await sb.auth.getUser()).data.user)}
+sb.auth.onAuthStateChange(ev=>{if(ev=='PASSWORD_RECOVERY')newPassView()});
 async function logIn(){const{data,error}=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value});
- if(error)return note(error.message,1);start(data.user)}
+ if(error)return note(/invalid login/i.test(error.message)?'Wrong email or password. If you haven\u2019t signed up yet, tap "New here? Sign up".':error.message,1);start(data.user)}
 async function start(u){user=u;
  const{data:us}=await sb.from('user_status').select('status').eq('user_id',u.id).maybeSingle();
  if(us&&us.status!=='active'){await sb.auth.signOut();user=null;return note('Your account has been '+us.status+' by the admin. Please contact support.',1)}
  role=await ensure(u);
- if(!role||role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
+ if(!role)return signupFinish(u);
+ if(role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
  note('');tab='dash';listen();if(await gate())return;home();annLoad()}
 async function out(){clearTimeout(obT);ob=false;annQ.length=0;const ao=$('ann');if(ao)ao.remove();if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
 
@@ -533,24 +544,25 @@ const dstat=(ds,t,vid,lab)=>{const m=ds.filter(d=>d.doc_type==t&&(!vid||d.vehicl
  return m.some(d=>d.status=='approved')?['approved']:m.some(d=>d.status!='rejected')?['pending']:m.length?['rejected',m[0].admin_note||'']:['missing']};
 const slot=(ds,t,l,vid,lab,h)=>{const[s,n]=dstat(ds,t,vid,lab);return `<div class="slot"><div class="sl"><b>${l}</b><div class="mut">${CHIP[s]}${n?' \u00b7 '+esc(n):''}</div>${h&&s!='approved'?`<div class="mut">${h}</div>`:''}</div>${s=='approved'?'<span class="vf">\u2714</span>':`<button class="${s=='pending'?'':'pri'}" onclick="obPick('${t}','${vid||''}','${lab||''}')">${s=='missing'?'Upload':s=='rejected'?'Re-upload':'Replace'}</button>`}</div>`};
 async function gate(){ob=false;clearTimeout(obT);
- const[p,d,v]=await Promise.all([sb.from('profiles').select('onboarded,address,age,onboarding_submitted_at').eq('id',user.id).maybeSingle(),sb.from('documents').select('doc_type,status,vehicle_id,label,admin_note').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);
+ const[p,d,v]=await Promise.all([sb.from('profiles').select('onboarded,address,age,onboarding_submitted_at,full_name').eq('id',user.id).maybeSingle(),sb.from('documents').select('doc_type,status,vehicle_id,label,admin_note').eq('user_id',user.id),role=='owner'?sb.from('vehicles').select('id,make,model').eq('owner_id',user.id):{data:[]}]);
  if(p.error||!p.data||p.data.onboarded)return false;
  const ds=d.data||[];
  if(REQD().every(([t])=>dstat(ds,t)[0]=='approved')){const f=await sb.rpc('finish_onboarding');if(!f.error&&f.data){note('You\u2019re verified. Welcome to DriverMatch!');return false}}
  ob=true;obView(p.data,ds,v.data||[]);return true}
+async function obCheck(){note('Checking\u2026');if(await gate())note('Still waiting for review. Nothing has changed yet.');else{tab='dash';home();annLoad()}}
 async function gateRun(){if(!(await gate())){tab='dash';home();annLoad()}}
-function obView(p,ds,vs){const R=REQD(),bad=R.filter(([t])=>['missing','rejected'].includes(dstat(ds,t)[0])),rej=R.some(([t])=>dstat(ds,t)[0]=='rejected');
+function obView(p,ds,vs){const[nm0,...sr]=(p.full_name||'').trim().split(/\s+/),sn0=sr.join(' '),R=REQD(),bad=R.filter(([t])=>['missing','rejected'].includes(dstat(ds,t)[0])),rej=R.some(([t])=>dstat(ds,t)[0]=='rejected');
  if(p.onboarding_submitted_at&&!bad.length&&p.address&&p.age>=18)return obWait(p,ds,R);
  app.innerHTML=`<div class="logo">\ud83d\ude97</div><h1>Let\u2019s get you verified</h1>
  <div class="hint">${role=='owner'?'To use DriverMatch we first need to confirm who you are. Your vehicles can be added once you are verified, or you can start one below.':'To use DriverMatch we first need to confirm who you are and that you may drive. Upload every document below, then wait for verification.'}<br><br>\u23f1 Verification can take up to <b>48 hours</b>.</div>
  ${rej?'<div class="hint" style="border-color:var(--er)">Some documents were rejected. Please upload them again.</div>':''}
- <div class="card"><h2>1. Your details</h2><input id="oba" placeholder="Home address (street, suburb, town)" value="${esc(obd.a??p.address??'')}" oninput="obd.a=this.value" autocomplete="street-address"><input id="obg" type="number" inputmode="numeric" placeholder="Age" value="${esc(obd.g??p.age??'')}" oninput="obd.g=this.value"></div>
+ <div class="card"><h2>1. Your details</h2><input id="obn" placeholder="Name" value="${esc(obd.n??nm0)}" oninput="obd.n=this.value" autocomplete="given-name"><input id="obs" placeholder="Surname" value="${esc(obd.s??sn0)}" oninput="obd.s=this.value" autocomplete="family-name"><input id="obg" type="number" inputmode="numeric" placeholder="Age" value="${esc(obd.g??p.age??'')}" oninput="obd.g=this.value"><input id="oba" placeholder="Home address (street, suburb, town)" value="${esc(obd.a??p.address??'')}" oninput="obd.a=this.value" autocomplete="street-address"></div>
  <div class="card"><h2>2. Documents</h2>${R.map(([t,l])=>slot(ds,t,l,'','',HINT[t])).join('')}</div>
  ${role=='owner'?obVeh(ds,vs):''}
  <button class="pri" style="width:100%;margin:0 0 10px" onclick="obSubmit()">Submit for verification</button>
  <input id="obf" type="file" style="display:none" onchange="obUp(this)"><p class="mut" style="text-align:center"><a href="#" onclick="out();return false">Log out</a></p>`}
 function obVeh(ds,vs){return `${dl}<div class="card"><h2>3. Add a vehicle (optional)</h2><div class="mut">Do it now or after you are verified.</div>`+vs.map(v=>`<div class="card"><b>${esc(v.make)} ${esc(v.model)}</b>${LB.map(l=>slot(ds,'vehicle_photo',l=='odometer'?'Odometer photo':l[0].toUpperCase()+l.slice(1)+' photo',v.id,l)).join('')}${slot(ds,'proof_of_ownership','Vehicle registration',v.id,'')}</div>`).join('')+`<button onclick="var e=$('obv');e.style.display=e.style.display=='none'?'block':'none'">\uff0b Add a vehicle</button><div id="obv" style="display:none;margin-top:10px"><select id="vt"><option>car</option><option>bike</option></select><input id="mk" placeholder="Make"><input id="md" placeholder="Model"><input id="yr" type="number" placeholder="Year"><input id="km" type="number" placeholder="Kms"><input id="wk" type="number" placeholder="Weekly amount I want to collect (R)">${locBtn}<input id="ci" list="cities" placeholder="Town / city where it is"><input id="su" placeholder="Suburb / township (optional)"><button class="pri" onclick="addVehicle()">Save vehicle</button></div></div>`}
-function obWait(p,ds,R){app.innerHTML=`<div class="logo">\u23f3</div><h1>Verification in progress</h1><div class="card" style="text-align:center"><h2>Thanks, we have your details</h2><p>We\u2019re checking your documents. This can take up to <b>48 hours</b>.</p><p class="mut">Submitted ${new Date(p.onboarding_submitted_at).toLocaleString('en-ZA')}. You can close the app. Log in again once you\u2019re approved and you\u2019ll go straight in.</p></div><div class="card"><h2>Your documents</h2>${R.map(([t,l])=>`<div class="slot"><div class="sl"><b>${l}</b></div><span class="mut">${CHIP[dstat(ds,t)[0]]}</span></div>`).join('')}</div><button class="pri" style="width:100%;margin:0 0 10px" onclick="gateRun()">Check status</button><p class="mut" style="text-align:center"><a href="#" onclick="out();return false">Log out</a></p>`;
+function obWait(p,ds,R){app.innerHTML=`<div class="logo">\u23f3</div><h1>Verification in progress</h1><div class="card" style="text-align:center"><h2>Thanks, we have your details</h2><p>We\u2019re checking your documents. This can take up to <b>48 hours</b>.</p><p class="mut">Submitted ${new Date(p.onboarding_submitted_at).toLocaleString('en-ZA')}. Last checked ${new Date().toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'})}. You can close the app. Log in again once you\u2019re approved and you\u2019ll go straight in.</p></div><div class="card"><h2>Your documents</h2>${R.map(([t,l])=>`<div class="slot"><div class="sl"><b>${l}</b></div><span class="mut">${CHIP[dstat(ds,t)[0]]}</span></div>`).join('')}</div><button class="pri" style="width:100%;margin:0 0 10px" onclick="obCheck()">Check status</button><p class="mut" style="text-align:center"><a href="#" onclick="out();return false">Log out</a></p>`;
  obT=setTimeout(gateRun,60000)}
 function obPick(t,vid,lab){pend={t,vid,lab};const i=$('obf');i.accept=t=='selfie_id'?'image/*':'image/*,application/pdf';i.click()}
 async function obUp(inp){const f=inp.files[0];inp.value='';if(!f||!pend)return;const{t,vid,lab}=pend;note('Uploading\u2026');
@@ -559,14 +571,37 @@ async function obUp(inp){const f=inp.files[0];inp.value='';if(!f||!pend)return;c
  const{error}=await sb.from('documents').insert({user_id:user.id,vehicle_id:vid||null,doc_type:t,label:lab||null,file_path:path});if(error)return note(error.message,1);
  if(t=='vehicle_photo'&&lab=='left')await sidePic(f,vid);
  note('Uploaded.');gateRun()}
-async function obSubmit(){const a=($('oba').value||'').trim(),g=+$('obg').value;
- if(a.length<8)return note('Enter your full home address.',1);
+async function obSubmit(){const n=($('obn').value||'').trim(),sn=($('obs').value||'').trim(),a=($('oba').value||'').trim(),g=+$('obg').value;
+ if(!n)return note('Enter your name.',1);
+ if(!sn)return note('Enter your surname.',1);
  if(!(g>=18&&g<=100))return note('You must be 18 or older. Enter your age.',1);
+ if(a.length<8)return note('Enter your full home address.',1);
  const{data:ds}=await sb.from('documents').select('doc_type,status').eq('user_id',user.id);
  const m=REQD().filter(([t])=>['missing','rejected'].includes(dstat(ds||[],t)[0])).map(x=>x[1]);
  if(m.length)return note('Still needed: '+m.join(', ')+'.',1);
+ const me=await loadMe(),fl=n+' '+sn,sp=await sb.rpc('save_my_profile',{p_full_name:fl,p_phone:me.phone||''});if(sp.error)return note(sp.error.message,1);
+ try{const r=await sb.auth.updateUser({data:{full_name:fl,phone:me.phone||''}});if(r.data&&r.data.user)user=r.data.user}catch(e){}
  const{error}=await sb.rpc('submit_onboarding',{p_address:a,p_age:g});if(error)return note(error.message,1);
  obd={};note('Submitted. We will review your documents.');gateRun()}
+/* ---- Google / phone sign-in and first-time sign-up ---- */
+const zaPhone=v=>{v=(v||'').replace(/[\s()-]/g,'');return v[0]=='+'?v:v[0]=='0'?'+27'+v.slice(1):v.startsWith('27')?'+'+v:'+27'+v};
+async function oauth(){try{localStorage.setItem('dm_mode',mode)}catch(e){}
+ const{error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});if(error)note(error.message,1)}
+function phoneView(sent){app.innerHTML=`<div class="logo">\ud83d\udcf1</div><h1 style="text-align:center">Phone number</h1><div class="card">${sent?`<div class="mut">Enter the code we sent to ${esc(sent)}.</div><input id="pc" inputmode="numeric" placeholder="Code" autocomplete="one-time-code"><button class="pri" onclick="phoneVerify('${sent}')">Verify</button>`:`<input id="pn" inputmode="tel" placeholder="Cell number, e.g. 082 123 4567" autocomplete="tel"><button class="pri" onclick="phoneSend()">Send code</button>`}<p><a href="#" onclick="authView(false);return false">\u2190 Back</a></p></div>`}
+async function phoneSend(){const p=zaPhone($('pn').value);if(p.length<12)return note('Enter a valid cell number.',1);try{localStorage.setItem('dm_mode',mode)}catch(e){}
+ const{error}=await sb.auth.signInWithOtp({phone:p});if(error)return note(error.message,1);phoneView(p)}
+async function phoneVerify(p){const{data,error}=await sb.auth.verifyOtp({phone:p,token:$('pc').value.trim(),type:'sms'});if(error)return note(error.message,1);afterAuth(data.user)}
+async function afterAuth(u){const r=await ensure(u);if(r){mode=r;return start(u)}signupFinish(u)}
+function sfRole(){app.querySelectorAll('.row button').forEach((b,i)=>b.className=(i==0)==(mode=='driver')?'on':'');$('sfl').innerHTML=mode=='driver'?'<select id="lt"><option>Code 8</option><option>Code 10</option><option>Code 14</option><option>Bike (A1/A)</option></select>':''}
+function signupFinish(u){const m=u.user_metadata||{};
+ app.innerHTML=`<div class="logo">\ud83d\ude97</div><h1 style="text-align:center">Finish signing up</h1><div class="hint">We don\u2019t have a DriverMatch account for you yet. Confirm your details to create one.</div>
+ <div class="row"><button onclick="mode='driver';sfRole()">I\u2019m a driver</button><button onclick="mode='owner';sfRole()">I\u2019m an owner</button></div>
+ <div class="card"><input id="fn" placeholder="Full name" value="${esc(m.full_name||m.name||'')}"><input id="ph" placeholder="Phone" inputmode="tel" value="${esc(u.phone?'+'+u.phone.replace(/^\+/,''):m.phone||'')}"><div id="sfl"></div>
+ <label class="mut" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0"><input type="checkbox" id="ag2" style="width:auto"> I accept the Terms and Privacy Policy</label><button class="pri" onclick="signupDone()">Create my account</button><p><a href="#" onclick="out();return false">Cancel</a></p></div>`;sfRole()}
+async function signupDone(){if(!$('ag2').checked)return note('Please accept the Terms and Privacy Policy.',1);const fn=$('fn').value.trim();if(!fn)return note('Enter your full name.',1);
+ const d={role:mode,full_name:fn,phone:$('ph').value.trim()};if(mode=='driver')d.licence_type=$('lt').value;
+ const{data,error}=await sb.auth.updateUser({data:d});if(error)return note(error.message,1);
+ const r=await ensure(data.user);if(!r)return note('Could not create your account. Try again.',1);start(data.user)}
 /* ---- Phone push ---- */
 const VAPID='BEE7l9sIC_qp3tfF7sH6JqQXnW2thmdV4ujse0S0EqMrYeCwgPUeECBNwMGqqvtrEqiLLdwmS2gcOhzYZOpa50I';
 const u8=t=>{const r=atob((t+'='.repeat((4-t.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0))};
@@ -579,8 +614,10 @@ async function enablePush(){try{if(await Notification.requestPermission()!='gran
  const{error}=await sb.from('push_subscriptions').upsert({user_id:user.id,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth},{onConflict:'endpoint'});
  error?note(error.message,1):(note('Phone notifications are on.'),home())}catch(e){note(e.message,1)}}
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>note(errMsg(e),1)));
-(async()=>{const{data:{session}}=await sb.auth.getSession();
- if(session){const r=await ensure(session.user);if(r){mode=r;return start(session.user)}}authView(false)})();
+(async()=>{const rec=/type=recovery/.test(location.hash);const{data:{session}}=await sb.auth.getSession();
+ try{mode=localStorage.getItem('dm_mode')||mode}catch(e){}
+ if(session&&(rec||recov))return newPassView();
+ if(session)return afterAuth(session.user);authView(false)})();
 
 new MutationObserver(()=>{const g=document.getElementById('gback'),b=document.getElementById('body');if(g&&b){const f=b.querySelector('button');g.style.display=(f&&/^[\u2190\u2039\u00ab<]/.test(f.textContent.trim()))?'none':''}}).observe(document.body,{childList:true,subtree:true});
 </script></body></html>
