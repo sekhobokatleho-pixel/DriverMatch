@@ -199,7 +199,6 @@ function authView(signup){const nv=$('nav');if(nv)nv.innerHTML='';
  app.innerHTML=`<div class="logo">🚗</div><h1 style="text-align:center">DriverMatch</h1>
  <div class="row"><button class="${mode=='driver'?'on':''}" onclick="mode='driver';authView(${signup})">I’m a driver</button><button class="${mode=='owner'?'on':''}" onclick="mode='owner';authView(${signup})">I’m an owner</button></div>
  <div class="card"><h2>${signup?'Create '+mode+' account':'Log in as '+mode}</h2>
- <button onclick="oauth()">Continue with Google</button><div class="mut" style="text-align:center;margin:6px 0">or use email</div>
  ${signup?'<input id="fn" placeholder="Full name"><input id="ph" placeholder="Phone" inputmode="tel">':''}
  ${signup&&mode=='driver'?'<select id="lt"><option>Code 8</option><option>Code 10</option><option>Code 14</option><option>Bike (A1/A)</option></select>':''}
  <input id="em" type="email" placeholder="Email"><div class="pwr"><input id="pw" type="password" placeholder="Password (min 6)" autocomplete="current-password"><button type="button" class="eye" aria-label="Show password" onclick="togglePw(this)">👁</button></div>${signup?`<label class="mut" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px"><input id="ag" type="checkbox" style="width:auto;margin:3px 0 0"> <span>I am 18 or older and agree to the <a href="#" onclick="legal('terms',1,1);return false">Terms</a> and <a href="#" onclick="legal('privacy',1,1);return false">Privacy Policy</a>.</span></label>`:''}
@@ -219,7 +218,7 @@ async function signUp(){if(!$('ag').checked)return note('Please accept the Terms
 let recov=false;
 async function forgot(){const e=($('em').value||'').trim();if(!e)return note('Type your email above first, then tap Forgot password.',1);
  const{error}=await sb.auth.resetPasswordForEmail(e,{redirectTo:location.origin+location.pathname});
- if(error)return note(error.message,1);note('If that email has an account, we\u2019ve sent a reset link. Check your inbox and spam. Signed up with Google? Use the Google button instead.')}
+ if(error)return note(error.message,1);note('If that email has an account, we\u2019ve sent a reset link. Check your inbox and spam.')}
 function newPassView(){recov=true;app.innerHTML=`<div class="logo">\ud83d\udd11</div><h1 style="text-align:center">Set a new password</h1><div class="card"><input id="np" type="password" placeholder="New password (min 6)" autocomplete="new-password"><input id="np2" type="password" placeholder="Repeat new password" autocomplete="new-password"><button class="pri" onclick="setPass()">Save password</button></div>`}
 async function setPass(){const a=$('np').value;if(a.length<6)return note('Password must be at least 6 characters.',1);if(a!==$('np2').value)return note('The passwords don\u2019t match.',1);
  const{error}=await sb.auth.updateUser({password:a});if(error)return note(error.message,1);
