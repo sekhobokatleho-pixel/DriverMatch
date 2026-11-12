@@ -413,21 +413,21 @@ const byNear=(a,b)=>(b.area-a.area)||(b.fit-a.fit)||((a.d??1e9)-(b.d??1e9));
 
 Object.assign(V,{
  async vehicle_cards(){const m=await sb.from('driver_profiles').select('weekly_offer,city,lat,lng').eq('user_id',user.id).maybeSingle(),me=m.data||{};
-  const[l,dm]=await Promise.all([sb.from('vehicle_listings').select('*'),dists('vehicle_distances',me.lat,me.lng)]);if(l.error)return l.error;
+  const[l,dm,rq]=await Promise.all([sb.from('vehicle_listings').select('*'),dists('vehicle_distances',me.lat,me.lng),sb.from('requests').select('vehicle_id').eq('driver_id',user.id).in('status',['pending','accepted'])]);if(l.error)return l.error;const reqd=new Set((rq.data||[]).map(x=>x.vehicle_id));
   const offer=+me.weekly_offer||0,c=nz(me.city),has=me.lat!=null||!!c;
   const list=l.data.map(v=>{const d=dm[v.id];return{...v,d,area:near(d,v,c),fit:offer>0&&offer>=+v.weekly_amount}}).filter(v=>!radius||v.area).sort(byNear);
   const pics=await vehiclePics(list.map(v=>v.id));
   const n=list.filter(v=>v.area&&v.fit).length;
   $('body').innerHTML='<h2 style="margin:0 0 4px">Available vehicles</h2><div class="mut" style="margin:0 0 10px">These are vehicles you can match with, not requests yet. Tap Request match on one, and it will then show under Requests.</div>'+(has?`${radSel()}<div class="hint"><b>${n}</b> vehicle${n==1?'':'s'} ${radius&&me.lat!=null?'within '+radius+' km':'near you'}${offer?' at or below your offer of '+rand(offer)+'/week':''}.</div>`:`<div class="hint">Turn on your location in <a href="#" onclick="tab='profile';home();return false">My offer</a> to see vehicles near you.</div>`)
-  +(list.length?list.map(v=>`<div class="card">${pics[v.id]?`<img class="vp" src="${esc(pics[v.id])}" alt="">`:''}${v.area?'<span class="tag">Near you</span>':''}${v.fit?'<span class="tag">Fits your offer</span>':''}<div><b>${esc(v.make)} ${esc(v.model)}</b> ${esc(v.year)}</div><div class="mut">${esc(v.vehicle_type)} · ${esc(v.kms)} km · ${where(v)}${km(v.d)}</div><div style="margin:0 0 6px">${VF}</div><div>Owner asks <b>${rand(v.weekly_amount)}</b>/week</div><button class="pri" onclick="ask('${v.id}')">Request match</button></div>`).join(''):empty('No vehicles found. Try a wider distance.'))},
+  +(list.length?list.map(v=>`<div class="card">${pics[v.id]?`<img class="vp" src="${esc(pics[v.id])}" alt="">`:''}${v.area?'<span class="tag">Near you</span>':''}${v.fit?'<span class="tag">Fits your offer</span>':''}<div><b>${esc(v.make)} ${esc(v.model)}</b> ${esc(v.year)}</div><div class="mut">${esc(v.vehicle_type)} · ${esc(v.kms)} km · ${where(v)}${km(v.d)}</div><div style="margin:0 0 6px">${VF}</div><div>Owner asks <b>${rand(v.weekly_amount)}</b>/week</div>${reqd.has(v.id)?'<button disabled>Requested ✓</button>':`<button class="pri" onclick="ask('${v.id}')">Request match</button>`}</div>`).join(''):empty('No vehicles found. Try a wider distance.'))},
  async driver_cards(){const b=await sb.from('vehicles').select('id,make,model,weekly_amount,city,suburb,lat,lng').eq('owner_id',user.id),vs=b.data||[];
   if(!vs.length){$('body').innerHTML=empty('Add a vehicle first in the My vehicles tab. Drivers are matched to its area and weekly amount.');return}
   if(!vs.find(v=>v.id==selVeh))selVeh=vs[0].id;const v=vs.find(x=>x.id==selVeh),c=nz(v.city);
-  const[a,dm,fn]=await Promise.all([sb.from('driver_listings').select('*'),dists('driver_distances',v.lat,v.lng),loadNames()]);if(a.error)return a.error;
+  const[a,dm,fn,rq]=await Promise.all([sb.from('driver_listings').select('*'),dists('driver_distances',v.lat,v.lng),loadNames(),sb.from('requests').select('driver_id').eq('vehicle_id',v.id).in('status',['pending','accepted'])]);if(a.error)return a.error;const reqd=new Set((rq.data||[]).map(x=>x.driver_id));
   const list=a.data.map(d=>{const k=dm[d.id];return{...d,d:k,area:near(k,d,c),fit:+d.weekly_offer>=+v.weekly_amount}}).filter(d=>+d.weekly_offer>0&&(!radius||d.area)).sort(byNear);
   const n=list.filter(d=>d.area&&d.fit).length;
   $('body').innerHTML=`<select onchange="selVeh=this.value;home()">${vs.map(x=>`<option value="${x.id}" ${x.id==selVeh?'selected':''}>${esc(x.make)} ${esc(x.model)} · ${rand(x.weekly_amount)}/week</option>`).join('')}</select>${v.lat!=null||c?radSel():''}<div class="hint"><b>${n}</b> driver${n==1?'':'s'} ${radius&&v.lat!=null?'within '+radius+' km':'in '+esc(v.city||'your area')} willing to pay ${rand(v.weekly_amount)}/week or more.${v.lat==null?' Tap “Update location” on the vehicle in My vehicles to match by distance.':''}</div>`
-  +(list.length?list.map(d=>`<div class="card">${d.area?'<span class="tag">Near you</span>':''}${d.fit?'<span class="tag">Meets your price</span>':''}<div><b>${esc(fn[d.id]||d.driver_code)}</b> · ${esc(d.licence_type)}</div><div class="mut">${where(d)}${km(d.d)}</div><div style="margin:0 0 6px">${VF}</div><div>Offers <b>${d.weekly_offer?rand(d.weekly_offer):'not set'}</b>/week</div><button class="pri" onclick="ask('${d.id}')">Request match</button></div>`).join(''):empty('No verified drivers found. Try a wider distance.'))},
+  +(list.length?list.map(d=>`<div class="card">${d.area?'<span class="tag">Near you</span>':''}${d.fit?'<span class="tag">Meets your price</span>':''}<div><b>${esc(fn[d.id]||d.driver_code)}</b> · ${esc(d.licence_type)}</div><div class="mut">${where(d)}${km(d.d)}</div><div style="margin:0 0 6px">${VF}</div><div>Offers <b>${d.weekly_offer?rand(d.weekly_offer):'not set'}</b>/week</div>${reqd.has(d.id)?'<button disabled>Requested ✓</button>':`<button class="pri" onclick="ask('${d.id}')">Request match</button>`}</div>`).join(''):empty('No verified drivers found. Try a wider distance.'))},
  async profile(){const{data,error}=await sb.from('driver_profiles').select('*').eq('user_id',user.id).maybeSingle();if(error)return error;const p=data||{};
   $('body').innerHTML=`${dl}<div class="card"><h2>My weekly offer and area</h2><div class="mut">Owners near you are told when your offer fits their price, before you pay. Status: ${esc(p.verification_status||'pending')}</div><input id="wo" type="number" placeholder="Weekly amount I’m willing to pay (R)" value="${esc(p.weekly_offer)}">${locBtn}${p.lat!=null?'<div class="mut">Location saved ✓</div>':''}<input id="ci" list="cities" placeholder="Town / city" value="${esc(p.city)}"><input id="su" placeholder="Suburb / township (optional)" value="${esc(p.suburb)}"><button class="pri" onclick="saveProfile()">Save</button></div>`},
  async vehicles(){const{data,error}=await sb.from('vehicles').select('*').eq('owner_id',user.id).order('created_at',{ascending:false});if(error)return error;
@@ -450,10 +450,17 @@ async function editArea(id){note('Getting your location…');let u;
  catch(e){note(e.message,1);const c=prompt('Type the town / city instead');if(!c)return;u={city:c.trim(),suburb:(prompt('Suburb / township (optional)')||'').trim()}}
  Object.keys(u).forEach(k=>u[k]===''&&delete u[k]);
  const{error}=await sb.from('vehicles').update(u).eq('id',id);error?note(error.message,1):(note('Location updated.'),home())}
-async function ask(id){const r=role=='driver'?{driver_id:user.id,vehicle_id:id}:{driver_id:id,vehicle_id:selVeh};
+const asking=new Set();
+async function ask(id){if(asking.has(id))return;
+ const r=role=='driver'?{driver_id:user.id,vehicle_id:id}:{driver_id:id,vehicle_id:selVeh};
  if(!r.vehicle_id)return note('Add a vehicle first.',1);
+ asking.add(id);
  const{error}=await sb.from('requests').insert({...r,initiated_by:role});
- if(error){note(error.message,1);if(/access|activate/i.test(error.message)){tab='payments';home()}return}note('Request sent.')}
+ asking.delete(id);
+ if(error){
+  if(error.code==='23505'){note('You already have an open request for this one. Check Requests.');home();return}
+  note(error.message,1);if(/access|activate/i.test(error.message)){tab='payments';home()}return}
+ note('Request sent.');home()}
 /* ---- Alerts, matches, chat, insurance ---- */
 const tm=d=>new Date(d).toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
 const bub=m=>`<div class="b ${m.sender_id==user.id?'me':'th'}">${esc(m.body)}<small>${tm(m.created_at)}</small></div>`;
