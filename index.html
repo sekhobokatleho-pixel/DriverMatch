@@ -563,12 +563,20 @@ const obDone=(ds,R)=>R.filter(([t])=>['approved','pending'].includes(dstat(ds,t)
 function obRows(ds,R){const nx=(R.find(([t])=>['missing','rejected'].includes(dstat(ds,t)[0]))||[])[0];
  return R.map(([t,l])=>{const[s,n]=dstat(ds,t),first=t==nx;
   return `<div class="slot"><div class="sl"><b>${l}</b><div class="mut">${CHIP[s]}${n?' \u00b7 '+esc(n):''}</div>${first&&HINT[t]?`<div class="mut">${HINT[t]}</div>`:''}</div>${s=='approved'?'<span class="vf">\u2714</span>':`<button class="${first||s=='rejected'?'pri':''}" onclick="obPick('${t}','','')">${s=='missing'?'Upload':s=='rejected'?'Re-upload':'Replace'}</button>`}</div>`}).join('')}
-function obNext(){const n=($('obn').value||'').trim(),sn=($('obs').value||'').trim(),a=($('oba').value||'').trim(),g=+$('obg').value;
+async function obNext(){const n=($('obn').value||'').trim(),sn=($('obs').value||'').trim(),a=($('oba').value||'').trim(),g=+$('obg').value;
  if(!n||!sn)return note('Enter your name and surname.',1);
  if(!(g>=18&&g<=100))return note('You must be 18 or older. Enter your age.',1);
  if(a.length<8)return note('Enter your full home address.',1);
- obStep=2;gateRun()}
-function obView(p,ds,vs){if(obStep==null)obStep=(p.address&&p.age>=18)?2:1;const[nm0,...sr]=(p.full_name||'').trim().split(/\s+/),sn0=sr.join(' '),R=REQD(),bad=R.filter(([t])=>['missing','rejected'].includes(dstat(ds,t)[0])),rej=R.some(([t])=>dstat(ds,t)[0]=='rejected');
+ await obSave(n,sn,a,g);obStep=2;gateRun()}
+const obKey=()=>'dm_ob_'+(user&&user.id);
+async function obSave(n,sn,a,g){
+ let ok=false;
+ try{const r=await sb.from('profiles').update({address:a,age:g}).eq('id',user.id).select('id');ok=!r.error&&!!(r.data&&r.data.length)}catch(e){}
+ try{const me=await loadMe();await sb.rpc('save_my_profile',{p_full_name:n+' '+sn,p_phone:(me&&me.phone)||''})}catch(e){}
+ try{if(ok)localStorage.removeItem(obKey());else localStorage.setItem(obKey(),JSON.stringify({n,s:sn,a,g}))}catch(e){}
+}
+function obView(p,ds,vs){if(!Object.keys(obd).length){try{obd=JSON.parse(localStorage.getItem(obKey())||'{}')}catch(e){obd={}}}
+ if(obStep==null)obStep=((p.address&&p.age>=18)||(obd.a&&+obd.g>=18))?2:1;const[nm0,...sr]=(p.full_name||'').trim().split(/\s+/),sn0=sr.join(' '),R=REQD(),bad=R.filter(([t])=>['missing','rejected'].includes(dstat(ds,t)[0])),rej=R.some(([t])=>dstat(ds,t)[0]=='rejected');
  if(p.onboarding_submitted_at&&!bad.length&&p.address&&p.age>=18)return obWait(p,ds,R);
  app.innerHTML=`<div class="logo">\ud83d\ude97</div><h1>Let\u2019s get you verified</h1>
  <div class="hint" style="${obStep==1?'':'display:none'}">${role=='owner'?'To use DriverMatch we first need to confirm who you are. Your vehicles can be added once you are verified, or you can start one below.':'To use DriverMatch we first need to confirm who you are and that you may drive. Upload every document below, then wait for verification.'}<br><br>\u23f1 Verification can take up to <b>48 hours</b>.</div>
@@ -602,7 +610,7 @@ async function obSubmit(){const n=($('obn').value||'').trim(),sn=($('obs').value
  const me=await loadMe(),fl=n+' '+sn,sp=await sb.rpc('save_my_profile',{p_full_name:fl,p_phone:me.phone||''});if(sp.error)return note(sp.error.message,1);
  try{const r=await sb.auth.updateUser({data:{full_name:fl,phone:me.phone||''}});if(r.data&&r.data.user)user=r.data.user}catch(e){}
  const{error}=await sb.rpc('submit_onboarding',{p_address:a,p_age:g});if(error)return note(error.message,1);
- obd={};obStep=null;note('Submitted. We will review your documents.');gateRun()}
+ obd={};obStep=null;try{localStorage.removeItem(obKey())}catch(e){}note('Submitted. We will review your documents.');gateRun()}
 /* ---- Google / phone sign-in and first-time sign-up ---- */
 const zaPhone=v=>{v=(v||'').replace(/[\s()-]/g,'');return v[0]=='+'?v:v[0]=='0'?'+27'+v.slice(1):v.startsWith('27')?'+'+v:'+27'+v};
 async function oauth(){try{localStorage.setItem('dm_mode',mode)}catch(e){}
