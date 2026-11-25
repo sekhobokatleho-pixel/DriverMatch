@@ -180,6 +180,13 @@ a{color:#fff;text-decoration:underline}
 .eye{position:absolute;right:6px;top:4px;width:36px;height:36px;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;font-size:18px;line-height:1;border-radius:50%;cursor:pointer}
 .pfc{text-align:center}.pfc .row{margin-top:8px}
 .slot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--bd);text-align:left}.slot .sl{flex:1}.slot .mut{margin:2px 0 0}
+/* ---- Unified toast: every message appears centered, same style ---- */
+#toast,#toast.bad{position:fixed;top:50%;left:50%;right:auto;bottom:auto;width:max-content;min-width:200px;max-width:min(86vw,340px);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px 26px 22px;border-radius:24px;text-align:center;font-size:15px;font-weight:500;line-height:1.45;letter-spacing:.1px;color:#fff;text-shadow:none;background:rgba(24,40,39,.88);border:1px solid rgba(255,255,255,.24);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:0 18px 48px rgba(10,24,24,.45),inset 0 1px 0 rgba(255,255,255,.18);z-index:9999;opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,-46%) scale(.96);transition:opacity .2s ease,transform .2s ease,visibility 0s linear .2s;animation:none}
+#toast.show,#toast.bad.show{opacity:1;visibility:visible;pointer-events:auto;transform:translate(-50%,-50%) scale(1);transition:opacity .2s ease,transform .2s ease;animation:none}
+#toast .ti{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;line-height:1;background:rgba(255,255,255,.16);color:#fff;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.4)}
+#toast.ok .ti{background:rgba(109,240,138,.22);color:#8ff0a8;box-shadow:inset 0 0 0 1.5px rgba(143,240,168,.55)}
+#toast.bad .ti{background:rgba(255,138,138,.22);color:#ffa3a3;box-shadow:inset 0 0 0 1.5px rgba(255,163,163,.55)}
+#toast .tm{overflow-wrap:anywhere}
 </style></head><body><main>
 <div id="toast" onclick="this.className=''"></div><div id="msg"></div><div id="app"></div></main><div id="nav"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -189,7 +196,11 @@ const $=id=>document.getElementById(id),app=$('app');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let user=null,role=null,mode='driver',tab='';
 let tT;const note=(t,bad)=>{const el=$('toast');clearTimeout(tT);if(!t){el.className='';return}
- el.textContent=(/^🔔/.test(t)?'':bad?'⚠️ ':'✅ ')+t;el.className='show'+(bad?' bad':'');tT=setTimeout(()=>el.className='',bad?4000:3200)};
+ const bell=/^\ud83d\udd14/.test(t),txt=bell?t.replace(/^\ud83d\udd14\s*/,''):t,prog=!bad&&/\u2026$/.test(txt);
+ el.innerHTML='';const i=document.createElement('span'),m=document.createElement('span');
+ i.className='ti';i.textContent=bad?'!':bell?'\ud83d\udd14':prog?'\u23f3':'\u2713';m.className='tm';m.textContent=txt;el.append(i,m);
+ el.className='show '+(bad?'bad':bell||prog?'info':'ok');
+ tT=setTimeout(()=>el.className='',Math.min(6000,Math.max(2800,1800+txt.length*45)))};
 /* every exception -> centered popup, 4s */
 const errMsg=e=>(e&&e.message)||String(e||'Something went wrong');
 addEventListener('error',e=>{if(/ResizeObserver/.test(e.message||''))return;note(errMsg(e.error||e.message),1)});
@@ -233,7 +244,7 @@ async function start(u){user=u;
  if(!role)return signupFinish(u);
  if(role!=mode){await sb.auth.signOut();user=null;return note(role?`This is a ${role} account. Use the ${role} login.`:'Could not load your profile.',1)}
  note('');tab='dash';listen();if(await gate())return;home();annLoad()}
-async function out(){clearTimeout(obT);ob=false;annQ.length=0;const ao=$('ann');if(ao)ao.remove();if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;note('');authView(false)}
+async function out(){clearTimeout(obT);ob=false;annQ.length=0;const ao=$('ann');if(ao)ao.remove();if(chan)sb.removeChannel(chan);unread=0;try{const reg=await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}await sb.auth.signOut();user=null;authView(false);note('You have been logged out.')}
 
 let unread=0,chan=null,cchan=null;
 /* ---- Admin announcements: popup + stays in Alerts ---- */
@@ -298,7 +309,7 @@ V.dash=async function(){
  const url=await avSigned(me.avatar_path);
   const t=[...(role=='driver'?[['vehicle_cards','🚗','Find vehicles'],['profile','💰','My offer']]:[['driver_cards','🧑','Find drivers'],['vehicles','🚙','My vehicles']]),['requests','📨','Requests'],['matches','🤝','Matches'],['notifications','🔔','Alerts'],['more','⚙️','More']];
  const bn=need&&need.miss?`<div class="hint" style="cursor:pointer" onclick="tab='myprofile';home()">📄 ${need.miss} document${need.miss>1?'s':''} still needed${need.rej?' · some were rejected':''}. Tap to upload in your profile.</div>`:'';
- $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w pfb" onclick="tab='myprofile';home()">${avHtml(url,full||role)}<span><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b>${need&&need.ver?VF:''}<em>My profile and documents ›</em></span></div>${bn}<div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div></div>`;
+ $('body').innerHTML=`<div class="ov"><div class="ov-h">OVERVIEW</div><div class="ov-w pfb" onclick="tab='myprofile';home()">${avHtml(url,full||role)}<span><small>Welcome back 👋</small><b>${nm?esc(nm):role}</b>${need&&need.ver?VF:''}<em>My profile and documents ›</em></span></div>${bn}<div class="tiles">${t.map(([k,ic,l])=>`<button class="tile" onclick="tab='${k}';home()"><span class="ic">${ic}</span>${l}${k=='notifications'&&unread?`<i class="bd">${unread}</i>`:''}</button>`).join('')}</div><button class="mbtn out" style="margin-top:14px" onclick="out()">Log out</button></div>`;
 };
 
 /* ---- Profile: picture (optional, private), personal details, documents ---- */
